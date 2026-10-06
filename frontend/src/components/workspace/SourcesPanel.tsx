@@ -51,7 +51,7 @@ function SourceRow({
               ? 'Reading and indexing…'
               : doc.status === 'failed'
                 ? doc.error
-                : `${doc.page_count} ${doc.page_count === 1 ? 'page' : 'pages'}, ${formatBytes(doc.size_bytes)}`}
+                : `${doc.page_count} ${doc.page_count === 1 ? 'page' : 'pages'}${doc.ocr_pages ? `, ${doc.ocr_pages} read with OCR` : ''}, ${formatBytes(doc.size_bytes)}`}
           </span>
         </span>
       </button>

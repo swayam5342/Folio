@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { ApiError } from '../../api/client'
 import { keys, useClearMessages, useMessages } from '../../api/queries'
@@ -79,11 +79,14 @@ export default function ChatPanel({
   readyCount,
   processingCount,
   onOpenSource,
+  switcher,
 }: {
   notebookId: string
   readyCount: number
   processingCount: number
   onOpenSource: (source: Source) => void
+  /** Chat | Study switch shown in place of the panel title. */
+  switcher: ReactNode
 }) {
   const messages = useMessages(notebookId)
   const clear = useClearMessages(notebookId)
@@ -195,7 +198,7 @@ export default function ChatPanel({
   return (
     <section aria-label="Chat" className="flex h-full min-h-0 flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4 sm:px-6">
-        <h2 className="font-serif text-lg font-semibold">Chat</h2>
+        {switcher}
         {history.length > 0 && (
           <Button variant="ghost" className="h-8 px-2.5" onClick={clearChat} disabled={streaming}>
             Clear chat

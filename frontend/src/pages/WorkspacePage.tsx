@@ -11,11 +11,35 @@ import { useToast } from '../components/ui/overlay'
 import { Spinner, cx } from '../components/ui/primitives'
 import ChatPanel from '../components/workspace/ChatPanel'
 import SourcesPanel from '../components/workspace/SourcesPanel'
+import StudyPanel from '../components/workspace/StudyPanel'
 
 // pdf.js is large; load it only when a document is first opened.
 const PdfViewer = lazy(() => import('../components/workspace/PdfViewer'))
 
 type Tab = 'sources' | 'chat' | 'viewer'
+type Mode = 'chat' | 'study'
+
+function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {
+  return (
+    <div className="inline-flex rounded-md border border-line-strong p-0.5" role="tablist" aria-label="Chat or study">
+      {(['chat', 'study'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          role="tab"
+          aria-selected={mode === m}
+          onClick={() => onChange(m)}
+          className={cx(
+            'h-7 rounded px-3 font-serif text-[15px] font-semibold capitalize transition-colors',
+            mode === m ? 'bg-ink text-paper' : 'text-muted hover:text-ink',
+          )}
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function useIsWide() {
   const query = '(min-width: 1024px)'
@@ -35,6 +59,7 @@ function Workspace({ notebookId }: { notebookId: string }) {
   const toast = useToast()
   const wide = useIsWide()
   const [tab, setTab] = useState<Tab>('chat')
+  const [mode, setMode] = useState<Mode>('chat')
   const [viewer, setViewer] = useState<ViewerTarget | null>(null)
 
   const docs = documents.data ?? []
@@ -85,13 +110,23 @@ function Workspace({ notebookId }: { notebookId: string }) {
       onRemoved={(id) => viewer?.documentId === id && closeViewer()}
     />
   )
+  const switcher = <ModeSwitch mode={mode} onChange={setMode} />
+  // Both stay mounted so a streaming answer or an open quiz survives switching.
   const chat = (
-    <ChatPanel
-      notebookId={notebookId}
-      readyCount={readyCount}
-      processingCount={processingCount}
-      onOpenSource={openSource}
-    />
+    <>
+      <div className={cx('h-full', mode !== 'chat' && 'hidden')}>
+        <ChatPanel
+          notebookId={notebookId}
+          readyCount={readyCount}
+          processingCount={processingCount}
+          onOpenSource={openSource}
+          switcher={switcher}
+        />
+      </div>
+      <div className={cx('h-full', mode !== 'study' && 'hidden')}>
+        <StudyPanel notebookId={notebookId} switcher={switcher} onOpenSource={openSource} />
+      </div>
+    </>
   )
   const pdf = viewer && (
     <ErrorBoundary
@@ -157,7 +192,7 @@ function Workspace({ notebookId }: { notebookId: string }) {
                   tab === t ? 'border-ink text-ink' : 'border-transparent text-muted',
                 )}
               >
-                {t === 'sources' ? `Sources${docs.length ? ` (${docs.length})` : ''}` : t}
+                {t === 'sources' ? `Sources${docs.length ? ` (${docs.length})` : ''}` : t === 'chat' ? (mode === 'chat' ? 'Chat' : 'Study') : t}
               </button>
             ))}
           </nav>

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, ApiError, json } from './client'
-import type { Message, Notebook, SourceDocument, User } from './types'
+import type { Message, Notebook, SourceDocument, StudySet, StudySetCreate, StudySetSummary, User } from './types'
 
 export const keys = {
   me: ['me'] as const,
@@ -9,6 +9,8 @@ export const keys = {
   notebook: (id: string) => ['notebooks', id] as const,
   documents: (notebookId: string) => ['notebooks', notebookId, 'documents'] as const,
   messages: (notebookId: string) => ['notebooks', notebookId, 'messages'] as const,
+  studySets: (notebookId: string) => ['notebooks', notebookId, 'study-sets'] as const,
+  studySet: (id: string) => ['study-sets', id] as const,
 }
 
 // --- Auth ---------------------------------------------------------------
@@ -149,5 +151,56 @@ export function useClearMessages(notebookId: string) {
   return useMutation({
     mutationFn: () => api<void>(`/notebooks/${notebookId}/messages`, { method: 'DELETE' }),
     onSuccess: () => qc.setQueryData<Message[]>(keys.messages(notebookId), []),
+  })
+}
+
+// --- Study sets ---------------------------------------------------------
+
+export const useStudySets = (notebookId: string) =>
+  useQuery({
+    queryKey: keys.studySets(notebookId),
+    queryFn: () => api<StudySetSummary[]>(`/notebooks/${notebookId}/study-sets`),
+  })
+
+export const useStudySet = (id: string) =>
+  useQuery({ queryKey: keys.studySet(id), queryFn: () => api<StudySet>(`/study-sets/${id}`) })
+
+const summarize = ({ document_ids: _d, items: _i, ...summary }: StudySet): StudySetSummary => summary
+
+export function useCreateStudySet(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: StudySetCreate) =>
+      api<StudySet>(`/notebooks/${notebookId}/study-sets`, { method: 'POST', ...json(body) }),
+    onSuccess: (set) => {
+      qc.setQueryData(keys.studySet(set.id), set)
+      qc.setQueryData<StudySetSummary[]>(keys.studySets(notebookId), (list) => [summarize(set), ...(list ?? [])])
+      qc.invalidateQueries({ queryKey: keys.notebooks, exact: true })
+    },
+  })
+}
+
+export function useDeleteStudySet(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/study-sets/${id}`, { method: 'DELETE' }),
+    onSuccess: (_, id) => {
+      qc.setQueryData<StudySetSummary[]>(keys.studySets(notebookId), (list) => list?.filter((s) => s.id !== id))
+      qc.removeQueries({ queryKey: keys.studySet(id) })
+    },
+  })
+}
+
+export function useSaveScore(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, score }: { id: string; score: number }) =>
+      api<StudySet>(`/study-sets/${id}/score`, { method: 'POST', ...json({ score }) }),
+    onSuccess: (set) => {
+      qc.setQueryData(keys.studySet(set.id), set)
+      qc.setQueryData<StudySetSummary[]>(keys.studySets(notebookId), (list) =>
+        list?.map((s) => (s.id === set.id ? summarize(set) : s)),
+      )
+    },
   })
 }

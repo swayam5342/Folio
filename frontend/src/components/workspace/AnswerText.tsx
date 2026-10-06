@@ -1,10 +1,14 @@
 import type { Root, RootContent } from 'mdast'
 import { useRef, useState, type ComponentPropsWithoutRef } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
+import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import 'katex/dist/katex.min.css'
 
 import type { Source } from '../../api/types'
 import { CITE_HREF, type Citation } from '../../lib/citations'
+import { normalizeMath } from '../../lib/math'
 import { cx } from '../ui/primitives'
 
 /**
@@ -132,8 +136,14 @@ export default function AnswerText({
   return (
     <div className={cx('answer-md', streaming && 'streaming')}>
       {markdown.trim() ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBrTags]} components={components} skipHtml>
-          {markdown}
+        <ReactMarkdown
+          // Single $ is not math (prices); \( \) and \[ \] are converted to $$ by normalizeMath.
+          remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkBrTags]}
+          rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore' }]]}
+          components={components}
+          skipHtml
+        >
+          {normalizeMath(markdown)}
         </ReactMarkdown>
       ) : (
         streaming && <p className="stream-caret" />

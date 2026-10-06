@@ -19,10 +19,17 @@ started with one `docker compose up`.
   sources and its own chat.
 - **PDF sources.** Drag-and-drop upload (up to 50 MB each). Files are stored
   and indexed in the background, with a live "processing → ready / failed"
-  status. Image-only (scanned) PDFs are detected and reported.
+  status. Scanned pages with no text layer are read with OCR (RapidOCR, runs
+  locally and offline).
 - **Cited answers.** Answers stream in word by word. Every claim carries a
   numbered citation; hovering shows the source snippet, clicking opens the
   page in the built-in PDF viewer with the passage highlighted.
+- **Quizzes and flashcards.** Generate a multiple-choice quiz (5, 10 or 15
+  questions) or a flashcard deck (10, 20 or 30 cards) from chosen sources and
+  an optional focus topic. Every question and card cites its page; sets and
+  quiz scores are saved per notebook.
+- **Exact-term search.** Retrieval combines meaning-based vector search with
+  keyword search, so course codes and function names find the right page.
 - **Follow-up questions.** Chat history is saved per notebook and the last few
   turns are sent with each question, so "tell me more about that" works.
 - **Grounded by design.** The model is instructed to answer only from the
@@ -49,7 +56,8 @@ started with one `docker compose up`.
 
 1. The backend checks the file (PDF signature, size), saves it to disk, and
    returns immediately with status `processing`.
-2. A background task extracts text page by page (PyMuPDF), splits it into
+2. A background task extracts text page by page (PyMuPDF), OCRs any page
+   without a text layer (RapidOCR at 200 DPI), splits the text into
    overlapping ~800-character chunks that remember their page number, and
    embeds each chunk with `BAAI/bge-small-en-v1.5` running locally.
 3. Chunks and their 384-dimension vectors are stored in Postgres; the document
@@ -57,15 +65,26 @@ started with one `docker compose up`.
 
 ### Asking a question
 
-1. The question is embedded with the same model and compared against the
-   notebook's chunks by cosine similarity (pgvector, HNSW index). The six
-   closest chunks are retrieved.
+1. The question is embedded with the same model. Two searches run over the
+   notebook's chunks: cosine similarity (pgvector, HNSW index) and PostgreSQL
+   full-text search on the question's words. Their rankings are merged with
+   reciprocal rank fusion and the top six chunks are retrieved.
 2. They're sent to the LLM labelled `[C1]…[C6]`, together with recent chat
    history and instructions to cite every claim as `[[C1]]`.
 3. The answer streams back to the browser over Server-Sent Events.
 4. When it finishes, the citation markers are parsed into structured sources
    (file, page, snippet), saved with the message, and rendered as clickable
    chips.
+
+### Generating a quiz or flashcards
+
+1. Excerpts are chosen within a budget that fits Groq's free tier (8,000
+   tokens per minute): with a focus topic, the best hybrid-search matches;
+   without one, an even spread across the selected sources.
+2. The model returns JSON in which every item cites an excerpt label.
+3. The backend drops malformed items or items citing a missing excerpt,
+   shuffles answer positions, resolves each citation to a file and page, and
+   saves the set.
 
 ## Running it
 
@@ -159,6 +178,9 @@ register/login. Resources owned by another user return `404`.
 | `GET` | `/documents/{id}/file` | Download the PDF |
 | `GET` `DELETE` | `/notebooks/{id}/messages` | Chat history / clear chat |
 | `POST` | `/notebooks/{id}/chat` | Ask a question; streams `token`, then `done` or `error` events |
+| `GET` `POST` | `/notebooks/{id}/study-sets` | List / generate quizzes and flashcard decks |
+| `GET` `DELETE` | `/study-sets/{id}` | Open / delete a study set |
+| `POST` | `/study-sets/{id}/score` | Save a quiz score |
 
 ## Project layout
 
@@ -176,7 +198,9 @@ backend/                   FastAPI backend (Python, managed with uv)
       pdf_parser.py        PDF → text per page
       chunking.py          text → overlapping chunks with page numbers
       embeddings.py        local sentence-transformers model
-      retrieval.py         pgvector similarity search
+      retrieval.py         hybrid vector + keyword search (RRF)
+      ocr.py               OCR for pages without a text layer
+      study.py             quiz and flashcard generation
       llm.py               prompt, Groq streaming, citation parsing
       storage.py           PDF files on disk
   alembic/                 database migrations
@@ -211,7 +235,10 @@ docker-compose.yml         db + backend + frontend
 
 ## Limitations
 
-- Scanned PDFs need OCR, which isn't included; they're reported as failed.
+- OCR'd pages have no text layer in the viewer, so their citations open the
+  right page without highlighting the passage.
+- Generated quiz questions are usually right but not guaranteed; each answer
+  shows its explanation and source page so it can be checked.
 - No password reset or email verification.
 - One backend process: the login rate limiter is in memory and files live on
   a local volume, so it isn't set up for multiple servers.

@@ -16,6 +16,7 @@
   --danger: #a3302a;
   --danger-soft: #f6e3e1;
   --ok: #2f6b45;
+  --ok-soft: #e3efe6;
   --focus: #1c2330;
   color-scheme: light;
 }
@@ -36,6 +37,7 @@
     --danger: #f08a80;
     --danger-soft: rgba(240, 138, 128, 0.12);
     --ok: #7cc495;
+    --ok-soft: rgba(124, 196, 149, 0.14);
     --focus: #e7e9ec;
     color-scheme: dark;
   }
@@ -56,6 +58,7 @@
   --danger: #f08a80;
   --danger-soft: rgba(240, 138, 128, 0.12);
   --ok: #7cc495;
+  --ok-soft: rgba(124, 196, 149, 0.14);
   --focus: #e7e9ec;
   color-scheme: dark;
 }
@@ -75,6 +78,7 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
 
   --font-serif: 'Newsreader', 'Iowan Old Style', Georgia, serif;
   --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
@@ -259,4 +263,60 @@
 .answer-table .hl-mark,
 .answer-table td > span > span.bg-sunken {
   font-size: 11px;
+}
+
+/* Flashcards: a 3D flip; reduced motion swaps faces instantly (global rule above). */
+.flashcard-scene {
+  perspective: 1400px;
+}
+.flashcard {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 18rem;
+  transform-style: preserve-3d;
+  transition: transform 450ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  border-radius: 12px;
+  text-align: center;
+}
+.flashcard.is-flipped {
+  transform: rotateY(180deg);
+}
+.flashcard-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flashcard-front > :nth-child(2),
+.flashcard-back > :nth-child(2) {
+  max-width: 36rem;
+}
+.flashcard-back {
+  transform: rotateY(180deg);
+  border-color: var(--highlight);
+  box-shadow: inset 0 3px 0 var(--highlight);
+}
+
+/* Math (KaTeX): wide display formulas scroll instead of overflowing the column. */
+.answer-md .katex {
+  font-size: 1.05em;
+}
+.answer-md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+.answer-table .katex {
+  font-size: 1.2em; /* table text is small; fractions need room to stay legible */
+  line-height: normal;
 }
