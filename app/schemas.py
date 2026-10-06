@@ -76,6 +76,7 @@ class ChatRequest(BaseModel):
 
 
 class SourceOut(BaseModel):
+    marker: str | None = None  # "C3" — which [[Cn]] in the answer this source backs
     chunk_id: str
     document_id: str
     filename: str

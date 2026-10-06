@@ -58,6 +58,7 @@ def build_context(retrieved: list[dict]) -> tuple[str, dict]:
         document = item["document"]
         marker = f"C{i}"
         citation_map[marker] = {
+            "marker": marker,
             "chunk_id": str(chunk.id),
             "document_id": str(document.id),
             "filename": document.filename,

@@ -1,0 +1,160 @@
+@import 'tailwindcss';
+
+
+:root {
+  --paper: #f6f6f3;
+  --surface: #ffffff;
+  --sunken: #eeeeea;
+  --ink: #1c2330;
+  --muted: #5d6573;
+  --faint: #8a909b;
+  --line: #dcddd8;
+  --line-strong: #c4c6bf;
+  --highlight: #f3d74c;
+  --highlight-soft: #f8e88f;
+  --highlight-ink: #1c2330;
+  --danger: #a3302a;
+  --danger-soft: #f6e3e1;
+  --ok: #2f6b45;
+  --focus: #1c2330;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #14171d;
+    --surface: #1b1f27;
+    --sunken: #11141a;
+    --ink: #e7e9ec;
+    --muted: #a3a9b3;
+    --faint: #737a86;
+    --line: #2c313b;
+    --line-strong: #3b414d;
+    --highlight: #d9bd3a;
+    --highlight-soft: rgba(217, 189, 58, 0.28);
+    --highlight-ink: #14171d;
+    --danger: #f08a80;
+    --danger-soft: rgba(240, 138, 128, 0.12);
+    --ok: #7cc495;
+    --focus: #e7e9ec;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #14171d;
+  --surface: #1b1f27;
+  --sunken: #11141a;
+  --ink: #e7e9ec;
+  --muted: #a3a9b3;
+  --faint: #737a86;
+  --line: #2c313b;
+  --line-strong: #3b414d;
+  --highlight: #d9bd3a;
+  --highlight-soft: rgba(217, 189, 58, 0.28);
+  --highlight-ink: #14171d;
+  --danger: #f08a80;
+  --danger-soft: rgba(240, 138, 128, 0.12);
+  --ok: #7cc495;
+  --focus: #e7e9ec;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-highlight: var(--highlight);
+  --color-highlight-soft: var(--highlight-soft);
+  --color-highlight-ink: var(--highlight-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+
+  --font-serif: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: var(--highlight-soft);
+  }
+}
+
+/* Highlighter mark: used for citation chips and the matching passage in the PDF. */
+.hl-mark {
+  background: linear-gradient(
+    100deg,
+    transparent 0.2em,
+    var(--highlight) 0.35em,
+    var(--highlight) calc(100% - 0.35em),
+    transparent calc(100% - 0.2em)
+  );
+  color: var(--highlight-ink);
+}
+
+/* pdf.js text layer: keep text invisible except our marks. */
+.pdf-page .textLayer mark {
+  background: var(--highlight);
+  opacity: 0.45;
+  color: transparent;
+  border-radius: 2px;
+  padding: 1px 0;
+}
+
+@keyframes pulse-mark {
+  0% { opacity: 0; }
+  40% { opacity: 0.75; }
+  100% { opacity: 0.45; }
+}
+.pdf-page .textLayer mark {
+  animation: pulse-mark 900ms ease-out;
+}
+
+@keyframes caret {
+  50% { opacity: 0; }
+}
+.stream-caret::after,
+.streaming > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--ink);
+  animation: caret 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
