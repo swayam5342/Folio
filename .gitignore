@@ -13,3 +13,7 @@ wheels/
 .env
 AGENTS.md
 claude.md
+
+# Agent scratch
+.superpowers/
+uploads/
