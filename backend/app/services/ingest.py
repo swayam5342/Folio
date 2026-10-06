@@ -71,7 +71,13 @@ async def process_document(document_id: uuid.UUID) -> None:
         document.ocr_pages = ocr_pages
         document.status = DocumentStatus.ready
         document.error = None
-        await db.commit()
+        try:
+            await db.commit()
+        except Exception:
+            # Without this the document would sit in "processing" until the next restart.
+            log.exception("Saving chunks for document %s failed", document_id)
+            await db.rollback()
+            await _mark_failed(document_id, GENERIC_ERROR)
 
 
 async def _mark_failed(document_id: uuid.UUID, message: str) -> None:
