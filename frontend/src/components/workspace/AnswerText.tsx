@@ -1,50 +1,26 @@
-import { Fragment, type ReactNode } from 'react'
+import type { Root, RootContent } from 'mdast'
+import { useRef, useState, type ComponentPropsWithoutRef } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 import type { Source } from '../../api/types'
-import type { Citation, Segment } from '../../lib/citations'
+import { CITE_HREF, type Citation } from '../../lib/citations'
 import { cx } from '../ui/primitives'
 
-type Inline = { kind: 'text'; text: string } | { kind: 'cite'; citation: Citation }
-type Line = Inline[]
-
-/** Renders **bold** and *italic* as elements — never as HTML. */
-function emphasis(text: string, key: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/g).map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4)
-      return <strong key={`${key}-${i}`} className="font-semibold">{part.slice(2, -2)}</strong>
-    if (part.startsWith('*') && part.endsWith('*') && part.length > 2)
-      return <em key={`${key}-${i}`}>{part.slice(1, -1)}</em>
-    return <Fragment key={`${key}-${i}`}>{part}</Fragment>
-  })
-}
-
-function toLines(segments: Segment[]): Line[] {
-  const lines: Line[] = [[]]
-  for (const seg of segments) {
-    if (seg.kind === 'cite') {
-      lines.at(-1)!.push(seg)
-      continue
-    }
-    seg.text.split('\n').forEach((piece, i) => {
-      if (i > 0) lines.push([])
-      if (piece) lines.at(-1)!.push({ kind: 'text', text: piece })
-    })
+/**
+ * Models write `<br>` for line breaks inside table cells. Raw HTML is never
+ * rendered, so turn exactly that tag into a markdown line break and leave
+ * every other HTML node to be dropped.
+ */
+function remarkBrTags() {
+  const visit = (node: Root | RootContent) => {
+    if (!('children' in node)) return
+    node.children = node.children.map((child) =>
+      child.type === 'html' && /^<br\s*\/?>$/i.test(child.value.trim()) ? { type: 'break' } : child,
+    ) as typeof node.children
+    node.children.forEach(visit)
   }
-  return lines
-}
-
-const LIST_ITEM = /^\s*(?:[-*•]|\d+[.)])\s+/
-const HEADING = /^\s*#{1,6}\s+/
-
-function lineText(line: Line) {
-  return line.map((i) => (i.kind === 'text' ? i.text : '')).join('')
-}
-
-/** Strip a prefix (list bullet / heading hashes) from the first text item of a line. */
-function stripPrefix(line: Line, re: RegExp): Line {
-  const [first, ...rest] = line
-  if (first?.kind !== 'text') return line
-  return [{ kind: 'text', text: first.text.replace(re, '') }, ...rest]
+  return (tree: Root) => visit(tree)
 }
 
 export function CitationChip({
@@ -74,7 +50,7 @@ export function CitationChip({
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-md border border-line bg-surface p-3 text-left font-sans text-[13px] leading-snug text-ink opacity-0 shadow-[0_10px_30px_-12px_rgba(20,25,35,0.35)] transition-opacity group-hover/chip:visible group-hover/chip:opacity-100 group-focus-within/chip:visible group-focus-within/chip:opacity-100"
+        className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-md border border-line bg-surface p-3 text-left font-sans text-[13px] font-normal leading-snug text-ink opacity-0 shadow-[0_10px_30px_-12px_rgba(20,25,35,0.35)] transition-opacity group-hover/chip:visible group-hover/chip:opacity-100 group-focus-within/chip:visible group-focus-within/chip:opacity-100"
       >
         <span className="block font-medium">
           {source.filename}, page {source.page_number}
@@ -85,93 +61,83 @@ export function CitationChip({
   )
 }
 
+export function CopyButton({ text, label = 'Copy', className }: { text: () => string; label?: string; className?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text())
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1500)
+        } catch {
+          /* clipboard blocked: nothing to do */
+        }
+      }}
+      className={cx(
+        'rounded px-2 py-0.5 font-sans text-xs text-muted transition-colors hover:bg-sunken hover:text-ink',
+        className,
+      )}
+    >
+      {copied ? 'Copied' : label}
+    </button>
+  )
+}
+
+function CodeBlock(props: ComponentPropsWithoutRef<'pre'>) {
+  const ref = useRef<HTMLPreElement>(null)
+  return (
+    <div className="answer-code group/code relative">
+      <CopyButton
+        text={() => ref.current?.innerText ?? ''}
+        className="absolute right-2 top-2 bg-surface opacity-0 group-hover/code:opacity-100 focus:opacity-100"
+      />
+      <pre ref={ref} {...props} />
+    </div>
+  )
+}
+
 export default function AnswerText({
-  segments,
+  markdown,
+  citations,
   onOpen,
   streaming,
 }: {
-  segments: Segment[]
+  markdown: string
+  citations: Citation[]
   onOpen?: (source: Source) => void
   streaming?: boolean
 }) {
-  const lines = toLines(segments)
-  const blocks: ReactNode[] = []
-  let list: { ordered: boolean; items: Line[] } | null = null
-  let para: Line[] = []
-
-  const renderInline = (line: Line, key: string) =>
-    line.map((item, i) =>
-      item.kind === 'text' ? (
-        emphasis(item.text, `${key}-${i}`)
-      ) : (
-        <CitationChip key={`${key}-${i}`} citation={item.citation} onOpen={onOpen} />
-      ),
-    )
-
-  const flushPara = () => {
-    if (!para.length) return
-    const k = `p${blocks.length}`
-    blocks.push(
-      <p key={k}>
-        {para.map((line, i) => (
-          <Fragment key={i}>
-            {i > 0 && ' '}
-            {renderInline(line, `${k}-${i}`)}
-          </Fragment>
-        ))}
-      </p>,
-    )
-    para = []
-  }
-  const flushList = () => {
-    if (!list) return
-    const k = `l${blocks.length}`
-    const Tag = list.ordered ? 'ol' : 'ul'
-    blocks.push(
-      <Tag key={k} className={cx('space-y-1 pl-5', list.ordered ? 'list-decimal' : 'list-disc')}>
-        {list.items.map((item, i) => (
-          <li key={i} className="pl-1 marker:text-faint">
-            {renderInline(item, `${k}-${i}`)}
-          </li>
-        ))}
-      </Tag>,
-    )
-    list = null
-  }
-
-  for (const line of lines) {
-    const text = lineText(line)
-    if (!text.trim() && !line.some((i) => i.kind === 'cite')) {
-      flushPara()
-      flushList()
-    } else if (LIST_ITEM.test(text)) {
-      flushPara()
-      const ordered = /^\s*\d/.test(text)
-      if (list && list.ordered !== ordered) flushList()
-      list ??= { ordered, items: [] }
-      list.items.push(stripPrefix(line, LIST_ITEM))
-    } else if (HEADING.test(text)) {
-      flushPara()
-      flushList()
-      blocks.push(
-        <p key={`h${blocks.length}`} className="font-semibold">
-          {renderInline(stripPrefix(line, HEADING), `h${blocks.length}`)}
-        </p>,
+  const components: Components = {
+    a: ({ href, children, node: _node, ...rest }) => {
+      if (href?.startsWith(CITE_HREF)) {
+        const citation = citations[Number(href.slice(CITE_HREF.length)) - 1]
+        return citation ? <CitationChip citation={citation} onOpen={onOpen} /> : null
+      }
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+          {children}
+        </a>
       )
-    } else if (list && line[0]?.kind === 'cite') {
-      // Citation that wrapped onto its own line after a bullet.
-      list.items[list.items.length - 1].push(...line)
-    } else {
-      flushList()
-      para.push(line)
-    }
+    },
+    table: ({ node: _node, ...props }) => (
+      <div className="answer-table">
+        <table {...props} />
+      </div>
+    ),
+    pre: ({ node: _node, ...props }) => <CodeBlock {...props} />,
   }
-  flushPara()
-  flushList()
 
   return (
-    <div className={cx('space-y-3 font-serif text-[1.075rem] leading-[1.65]', streaming && 'streaming')}>
-      {blocks.length ? blocks : streaming ? <p className="stream-caret" /> : null}
+    <div className={cx('answer-md', streaming && 'streaming')}>
+      {markdown.trim() ? (
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBrTags]} components={components} skipHtml>
+          {markdown}
+        </ReactMarkdown>
+      ) : (
+        streaming && <p className="stream-caret" />
+      )}
     </div>
   )
 }

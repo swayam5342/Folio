@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } from 'react-router'
 
 import { setUnauthorizedHandler } from './api/client'
@@ -7,7 +7,9 @@ import { keys, useMe } from './api/queries'
 import { Spinner } from './components/ui/primitives'
 import LoginPage from './pages/LoginPage'
 import NotebooksPage from './pages/NotebooksPage'
-import WorkspacePage from './pages/WorkspacePage'
+
+// The workspace (markdown rendering, PDF viewer) loads only when a notebook is opened.
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage'))
 
 function FullPageSpinner() {
   return (
@@ -55,7 +57,14 @@ const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { path: '/', element: <NotebooksPage /> },
-      { path: '/notebooks/:notebookId', element: <WorkspacePage /> },
+      {
+        path: '/notebooks/:notebookId',
+        element: (
+          <Suspense fallback={<FullPageSpinner />}>
+            <WorkspacePage />
+          </Suspense>
+        ),
+      },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

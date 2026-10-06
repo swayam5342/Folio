@@ -5,11 +5,11 @@ import { ApiError } from '../../api/client'
 import { keys, useClearMessages, useMessages } from '../../api/queries'
 import { streamChat } from '../../api/stream'
 import type { Message, Source } from '../../api/types'
-import { segmentAnswer, stripPartialMarker } from '../../lib/citations'
+import { answerToPlainText, prepareAnswer, stripPartialMarker } from '../../lib/citations'
 import { AlertIcon, RetryIcon, SendIcon, StopIcon } from '../ui/icons'
 import { useConfirm, useToast } from '../ui/overlay'
 import { Button, IconButton, Spinner, cx } from '../ui/primitives'
-import AnswerText, { CitationChip } from './AnswerText'
+import AnswerText, { CitationChip, CopyButton } from './AnswerText'
 
 const STARTERS = [
   'Summarize these sources in a few paragraphs',
@@ -44,11 +44,11 @@ function AssistantMessage({
   streaming?: boolean
   onOpen: (source: Source) => void
 }) {
-  const { segments, citations } = segmentAnswer(content, sources)
+  const { markdown, citations } = prepareAnswer(content, sources)
   const listed = citations.filter((c) => c.source)
   return (
-    <div className="max-w-[68ch]">
-      <AnswerText segments={segments} onOpen={onOpen} streaming={streaming} />
+    <div className="min-w-0 max-w-[72ch]">
+      <AnswerText markdown={markdown} citations={citations} onOpen={onOpen} streaming={streaming} />
       {listed.length > 0 && (
         <ol className="mt-4 space-y-1 border-t border-line pt-3 text-sm">
           {listed.map((c) => (
@@ -64,6 +64,11 @@ function AssistantMessage({
             </li>
           ))}
         </ol>
+      )}
+      {!streaming && markdown.trim() && (
+        <div className="mt-2 -ml-2">
+          <CopyButton label="Copy answer" text={() => answerToPlainText(markdown)} />
+        </div>
       )}
     </div>
   )

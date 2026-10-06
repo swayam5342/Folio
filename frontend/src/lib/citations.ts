@@ -6,6 +6,9 @@ const CANONICAL = /\[\[C(\d+)\]\]/g
 // A marker still being streamed in, e.g. "...budget [[C" — hidden until complete.
 const PARTIAL_TAIL = /(?:\[\[?C?\d*,?\s*\d*\]?|【[^】\n]{0,20})$/
 
+/** Links with this href prefix are rendered as citation chips by AnswerText. */
+export const CITE_HREF = '#cite-'
+
 export function normalizeCitations(text: string): string {
   return text.replace(LOOSE, (_, group: string) =>
     (group.match(/\d+/g) ?? []).map((n) => `[[C${n}]]`).join(''),
@@ -23,17 +26,16 @@ export type Citation = {
   source: Source | null
 }
 
-export type Segment = { kind: 'text'; text: string } | { kind: 'cite'; citation: Citation }
-
 /**
- * Splits an answer into text and citation segments, renumbering [[Cn]] markers
- * 1..k by first appearance. Markers that don't match a known source are dropped
- * once sources are available (the model occasionally invents one).
+ * Turns an answer into markdown for rendering: every [[Cn]] marker becomes a
+ * link `[k](#cite-k)`, numbered 1..k by first appearance, which AnswerText
+ * draws as a chip. Markers that don't match a known source are dropped once
+ * sources are available (the model occasionally invents one).
  */
-export function segmentAnswer(
+export function prepareAnswer(
   content: string,
   sources: Source[] | null,
-): { segments: Segment[]; citations: Citation[] } {
+): { markdown: string; citations: Citation[] } {
   const text = normalizeCitations(content)
   const byMarker = new Map(sources?.filter((s) => s.marker).map((s) => [s.marker!, s]) ?? [])
   // Older messages saved before markers were stored: sources are in ascending marker order.
@@ -42,26 +44,28 @@ export function segmentAnswer(
     used.forEach((n, i) => sources[i] && byMarker.set(`C${n}`, sources[i]))
   }
 
-  const segments: Segment[] = []
   const numbers = new Map<string, Citation>()
-  let last = 0
-  for (const m of text.matchAll(CANONICAL)) {
-    if (m.index > last) segments.push({ kind: 'text', text: text.slice(last, m.index) })
-    last = m.index + m[0].length
-    const marker = `C${m[1]}`
+  let previous: Citation | null = null
+  const markdown = text.replace(CANONICAL, (_, num: string, offset: number, whole: string) => {
+    const marker = `C${num}`
     const source = byMarker.get(marker) ?? null
-    if (sources && !source) continue // unknown marker
+    if (sources && !source) return '' // unknown marker
     let citation = numbers.get(marker)
     if (!citation) {
       citation = { n: numbers.size + 1, source }
       numbers.set(marker, citation)
     }
     // Collapse the same citation repeated back-to-back ([[C1]][[C1]]).
-    const prev = segments.at(-1)
-    if (prev?.kind === 'cite' && prev.citation === citation) continue
-    segments.push({ kind: 'cite', citation })
-  }
-  if (last < text.length) segments.push({ kind: 'text', text: text.slice(last) })
+    const adjacent = whole.slice(0, offset).endsWith(']]')
+    if (adjacent && previous === citation) return ''
+    previous = citation
+    return `[${citation.n}](${CITE_HREF}${citation.n})`
+  })
 
-  return { segments, citations: [...numbers.values()] }
+  return { markdown, citations: [...numbers.values()] }
+}
+
+/** Plain text for the clipboard: markers become [1], [2]. */
+export function answerToPlainText(markdown: string): string {
+  return markdown.replace(/\[(\d+)\]\(#cite-\d+\)/g, '[$1]')
 }
