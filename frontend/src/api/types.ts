@@ -19,6 +19,7 @@ export type SourceDocument = {
   notebook_id: string
   filename: string
   page_count: number
+  ocr_pages: number
   size_bytes: number
   status: DocumentStatus
   error: string | null

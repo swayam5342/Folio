@@ -58,6 +58,7 @@ class DocumentOut(ORMModel):
     notebook_id: uuid.UUID
     filename: str
     page_count: int
+    ocr_pages: int
     size_bytes: int
     status: Literal["processing", "ready", "failed"]
     error: str | None
