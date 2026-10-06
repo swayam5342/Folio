@@ -34,7 +34,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
-    notebooks = relationship("Notebook", back_populates="user", cascade="all, delete-orphan")
+    notebooks = relationship("Notebook", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class Notebook(Base):
@@ -47,8 +47,8 @@ class Notebook(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     user = relationship("User", back_populates="notebooks")
-    documents = relationship("Document", back_populates="notebook", cascade="all, delete-orphan")
-    messages = relationship("Message", back_populates="notebook", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
+    messages = relationship("Message", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
 
     def touch(self) -> None:
         self.updated_at = utcnow()
@@ -72,7 +72,7 @@ class Document(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="documents")
-    chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
+    chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class Chunk(Base):
