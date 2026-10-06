@@ -81,7 +81,7 @@ async def chat(
     await db.commit()
 
     query_embedding = await asyncio.to_thread(embed_query, payload.question)
-    retrieved = await similarity_search(db, notebook.id, query_embedding)
+    retrieved = await similarity_search(db, notebook.id, payload.question, query_embedding)
     notebook_id = notebook.id
 
     async def events() -> AsyncIterator[str]:

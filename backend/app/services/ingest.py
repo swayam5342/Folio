@@ -14,7 +14,7 @@ from app.services.pdf_parser import extract_pages_from_pdf
 
 log = logging.getLogger(__name__)
 
-NO_TEXT_ERROR = "No extractable text — is this a scanned PDF?"
+NO_TEXT_ERROR = "No readable text found, even with OCR."
 UNREADABLE_ERROR = "This file couldn't be read as a PDF."
 GENERIC_ERROR = "Processing failed — please try uploading again."
 INTERRUPTED_ERROR = "Processing was interrupted — please re-upload."
@@ -24,17 +24,17 @@ class IngestError(Exception):
     """A failure whose message is safe to show the user."""
 
 
-def _extract_and_embed(path) -> tuple[int, list[dict], list[list[float]]]:
+def _extract_and_embed(path) -> tuple[int, int, list[dict], list[list[float]]]:
     """CPU-bound work, run in a thread so the event loop keeps serving requests."""
     try:
-        page_count, pages = extract_pages_from_pdf(path.read_bytes())
+        page_count, pages, ocr_pages = extract_pages_from_pdf(path.read_bytes())
     except Exception as exc:
         raise IngestError(UNREADABLE_ERROR) from exc
     if not pages:
         raise IngestError(NO_TEXT_ERROR)
     chunks = chunk_pages(pages)
     embeddings = embed_texts([c["content"] for c in chunks])
-    return page_count, chunks, embeddings
+    return page_count, ocr_pages, chunks, embeddings
 
 
 async def process_document(document_id: uuid.UUID) -> None:
@@ -43,7 +43,7 @@ async def process_document(document_id: uuid.UUID) -> None:
         if document is None:
             return  # deleted before processing started
         try:
-            page_count, chunks, embeddings = await asyncio.to_thread(
+            page_count, ocr_pages, chunks, embeddings = await asyncio.to_thread(
                 _extract_and_embed, storage.absolute(document.storage_path)
             )
         except IngestError as exc:
@@ -68,6 +68,7 @@ async def process_document(document_id: uuid.UUID) -> None:
             for c, e in zip(chunks, embeddings)
         )
         document.page_count = page_count
+        document.ocr_pages = ocr_pages
         document.status = DocumentStatus.ready
         document.error = None
         await db.commit()
