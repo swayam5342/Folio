@@ -9,6 +9,7 @@ cite one, and items that don't validate are dropped.
 import asyncio
 import json
 import random
+import re
 import uuid
 
 from pydantic import BaseModel, ValidationError, field_validator
@@ -33,6 +34,7 @@ Rules:
 - Use only facts stated in the excerpts. Never invent facts, numbers or examples.
 - Spread items across different excerpts; don't repeat the same fact.
 - Write clearly for a university student revising for an exam.
+- Never mention excerpt labels (C1, C2, ...) or "the excerpt" in any text the student reads; labels belong only in "cite".
 - Reply with JSON only, in exactly the shape requested."""
 
 QUIZ_SHAPE = """{"title": "<short title for this quiz, max 8 words>",
@@ -46,6 +48,16 @@ FLASHCARD_SHAPE = """{"title": "<short title for this deck, max 8 words>",
  "items": [{"front": "<a term or a short question>",
             "back": "<the answer, at most two sentences>",
             "cite": "C<n>"}]}"""
+
+
+# A label the model leaked into student-facing text, e.g. "C4 states that", "excerpt C2", "[[C3]]".
+_LEAKED_LABEL = re.compile(r"(?:\b(?:the\s+)?excerpt\s+)?\[{0,2}\bC\d+\b\]{0,2}", re.IGNORECASE)
+
+
+def _scrub(text: str) -> str:
+    """Replace leaked excerpt labels with plain words, keeping sentence case."""
+    cleaned = _LEAKED_LABEL.sub("the source", text).strip()
+    return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
 
 
 class GenerationFailed(Exception):
@@ -178,14 +190,14 @@ def _validate(raw: str, kind: StudyKind, citation_map: dict) -> tuple[str, list[
             order = list(range(4))
             random.shuffle(order)
             items.append({
-                "question": item.question,
-                "options": [item.options[i] for i in order],
+                "question": _scrub(item.question),
+                "options": [_scrub(item.options[i]) for i in order],
                 "answer_index": order.index(item.answer_index),
-                "explanation": item.explanation,
+                "explanation": _scrub(item.explanation),
                 "source": source,
             })
         else:
-            items.append({"front": item.front, "back": item.back, "source": source})
+            items.append({"front": _scrub(item.front), "back": _scrub(item.back), "source": source})
     title = str(data.get("title") or "").strip()[:120]
     return title, items
 
