@@ -1,0 +1,9 @@
+.git
+.venv
+.env
+.superpowers
+__pycache__
+*.pyc
+uploads
+frontend
+docs

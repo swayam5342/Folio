@@ -1,17 +1,50 @@
-version: "3.9"
-
 services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: raguser
-      POSTGRES_PASSWORD: ragpass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ragpass}
       POSTGRES_DB: notebooklm
     ports:
-      - "5432:5432"
+      - "5432:5432"  # exposed for local development (uvicorn outside Docker)
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d notebooklm"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Overrides the localhost URL in .env: inside Docker the database is the "db" service.
+      DATABASE_URL: postgresql+asyncpg://raguser:${POSTGRES_PASSWORD:-ragpass}@db:5432/notebooklm
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  uploads:

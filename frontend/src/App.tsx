@@ -32,10 +32,27 @@ function GuestOnly() {
   return <Outlet />
 }
 
+function RouteError() {
+  return (
+    <div className="mx-auto max-w-md px-4 py-24 text-center">
+      <h1 className="font-serif text-2xl font-semibold">Something went wrong on this page</h1>
+      <p className="mt-2 text-muted">Reload to try again. Your notebooks and sources are saved.</p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="mt-6 font-medium underline underline-offset-4"
+      >
+        Reload
+      </button>
+    </div>
+  )
+}
+
 const router = createBrowserRouter([
-  { element: <GuestOnly />, children: [{ path: '/login', element: <LoginPage /> }] },
+  { element: <GuestOnly />, errorElement: <RouteError />, children: [{ path: '/login', element: <LoginPage /> }] },
   {
     element: <RequireAuth />,
+    errorElement: <RouteError />,
     children: [
       { path: '/', element: <NotebooksPage /> },
       { path: '/notebooks/:notebookId', element: <WorkspacePage /> },

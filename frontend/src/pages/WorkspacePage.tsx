@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import { useDocuments, useNotebook } from '../api/queries'
 import type { Source, SourceDocument, ViewerTarget } from '../api/types'
 import AppHeader from '../components/AppHeader'
+import ErrorBoundary from '../components/ErrorBoundary'
 import { ChevronLeft } from '../components/ui/icons'
 import { useToast } from '../components/ui/overlay'
 import { Spinner, cx } from '../components/ui/primitives'
@@ -93,6 +94,18 @@ function Workspace({ notebookId }: { notebookId: string }) {
     />
   )
   const pdf = viewer && (
+    <ErrorBoundary
+      key={viewer.nonce}
+      fallback={() => (
+        <div className="flex h-full flex-col items-center justify-center gap-3 bg-sunken px-6 text-center">
+          <p className="font-medium">This PDF couldn’t be displayed.</p>
+          <p className="text-sm text-muted">Try reloading the page. The cited text is still shown when you hover a citation.</p>
+          <button type="button" onClick={closeViewer} className="text-sm font-medium underline underline-offset-4">
+            Close viewer
+          </button>
+        </div>
+      )}
+    >
     <Suspense
       fallback={
         <div className="flex h-full items-center justify-center bg-sunken text-muted">
@@ -102,6 +115,7 @@ function Workspace({ notebookId }: { notebookId: string }) {
     >
       <PdfViewer target={viewer} document={docs.find((d) => d.id === viewer.documentId)} onClose={closeViewer} />
     </Suspense>
+    </ErrorBoundary>
   )
 
   return (
