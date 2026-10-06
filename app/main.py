@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.config import settings
-from app.routers import auth, documents, notebooks
+from app.routers import auth, chat, documents, notebooks
 from app.services.embeddings import get_model
 from app.services.ingest import fail_interrupted_documents
 
@@ -28,6 +28,7 @@ app = FastAPI(title="NotebookLM-style RAG API", lifespan=lifespan)
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
+app.include_router(chat.router, prefix="/api", tags=["chat"])
 
 
 @app.get("/api/health")
