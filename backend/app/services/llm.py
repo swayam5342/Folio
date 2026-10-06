@@ -49,6 +49,13 @@ class RateLimited(LLMError):
         super().__init__("The AI service is rate limited (free tier)." + wait, retry_after)
 
 
+class InvalidJSON(LLMError):
+    """The model's JSON-mode output was not valid JSON (worth one retry)."""
+
+    def __init__(self):
+        super().__init__("The AI service returned malformed output. Please try again.")
+
+
 def build_context(retrieved: list[dict]) -> tuple[str, dict]:
     context_blocks = []
     citation_map = {}
@@ -99,6 +106,17 @@ def _retry_after(exc: groq.APIStatusError) -> int | None:
         return None
 
 
+def _to_llm_error(exc: groq.APIError) -> LLMError:
+    """Map a Groq SDK error to a user-safe LLMError."""
+    if isinstance(exc, groq.RateLimitError):
+        return RateLimited(_retry_after(exc))
+    if isinstance(exc, groq.AuthenticationError):
+        return LLMError("The AI service rejected the API key — check GROQ_API_KEY.")
+    if isinstance(exc, groq.APIStatusError):
+        return LLMError(f"The AI service returned an error ({exc.status_code}). Please try again.")
+    return LLMError("Couldn't reach the AI service. Check your internet connection.")
+
+
 async def stream_answer(messages: list[dict]) -> AsyncIterator[str]:
     """Yields answer text pieces. Raises LLMError (or RateLimited) with a user-safe message."""
     client = groq.AsyncGroq(api_key=settings.GROQ_API_KEY, max_retries=0)
@@ -112,13 +130,35 @@ async def stream_answer(messages: list[dict]) -> AsyncIterator[str]:
         async for chunk in stream:
             if chunk.choices and (text := chunk.choices[0].delta.content):
                 yield text
-    except groq.RateLimitError as exc:
-        raise RateLimited(_retry_after(exc)) from exc
-    except groq.AuthenticationError as exc:
-        raise LLMError("The AI service rejected the API key — check GROQ_API_KEY.") from exc
-    except groq.APIStatusError as exc:
-        raise LLMError(f"The AI service returned an error ({exc.status_code}). Please try again.") from exc
-    except groq.APIConnectionError as exc:
-        raise LLMError("Couldn't reach the AI service. Check your internet connection.") from exc
+    except groq.APIError as exc:
+        raise _to_llm_error(exc) from exc
+    finally:
+        await client.close()
+
+
+async def complete_json(messages: list[dict], max_tokens: int = 6000, reasoning_effort: str = "low") -> str:
+    """One non-streamed call in JSON mode; returns the raw JSON text. Raises LLMError / RateLimited.
+
+    reasoning_effort (gpt-oss only) trades the free tier's 8,000 tokens/minute for accuracy:
+    "low" ~1 hidden reasoning token per output token, "medium" roughly three times that."""
+    extra = {}
+    if settings.GROQ_MODEL.startswith("openai/gpt-oss"):
+        extra["reasoning_effort"] = reasoning_effort
+    client = groq.AsyncGroq(api_key=settings.GROQ_API_KEY, max_retries=0)
+    try:
+        response = await client.chat.completions.create(
+            model=settings.GROQ_MODEL,
+            messages=messages,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+            **extra,
+        )
+        return response.choices[0].message.content or ""
+    except groq.BadRequestError as exc:
+        if "json_validate_failed" in str(exc):
+            raise InvalidJSON() from exc
+        raise _to_llm_error(exc) from exc
+    except groq.APIError as exc:
+        raise _to_llm_error(exc) from exc
     finally:
         await client.close()

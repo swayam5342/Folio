@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 # Normalise before the pattern check (StringConstraints checks the pattern on the raw input).
 _normalise = BeforeValidator(lambda v: v.strip().lower() if isinstance(v, str) else v)
@@ -96,3 +96,53 @@ class MessageOut(ORMModel):
     @classmethod
     def _enum_value(cls, v):
         return getattr(v, "value", v)
+
+
+# --- Study sets -----------------------------------------------------------
+
+QUIZ_COUNTS = (5, 10, 15)
+FLASHCARD_COUNTS = (10, 20, 30)
+
+
+class StudySetCreate(BaseModel):
+    kind: Literal["quiz", "flashcards"]
+    count: int
+    topic: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
+    document_ids: list[uuid.UUID] | None = None
+
+    @field_validator("topic")
+    @classmethod
+    def _empty_topic_is_none(cls, v: str | None) -> str | None:
+        return v or None
+
+    @model_validator(mode="after")
+    def _count_for_kind(self):
+        allowed = QUIZ_COUNTS if self.kind == "quiz" else FLASHCARD_COUNTS
+        if self.count not in allowed:
+            raise ValueError(f"count must be one of {', '.join(map(str, allowed))} for {self.kind}")
+        return self
+
+
+class StudySetSummary(ORMModel):
+    id: uuid.UUID
+    notebook_id: uuid.UUID
+    kind: Literal["quiz", "flashcards"]
+    title: str
+    topic: str | None
+    item_count: int
+    last_score: int | None
+    created_at: datetime
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _enum_value(cls, v):
+        return getattr(v, "value", v)
+
+
+class StudySetOut(StudySetSummary):
+    document_ids: list[uuid.UUID]
+    items: list[dict]
+
+
+class ScoreIn(BaseModel):
+    score: Annotated[int, Field(ge=0)]

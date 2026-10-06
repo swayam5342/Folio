@@ -124,3 +124,7 @@ class StudySet(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="study_sets")
+
+    @property
+    def item_count(self) -> int:
+        return len(self.items or [])
