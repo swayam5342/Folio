@@ -306,3 +306,17 @@
   border-color: var(--highlight);
   box-shadow: inset 0 3px 0 var(--highlight);
 }
+
+/* Math (KaTeX): wide display formulas scroll instead of overflowing the column. */
+.answer-md .katex {
+  font-size: 1.05em;
+}
+.answer-md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+.answer-table .katex {
+  font-size: 1.2em; /* table text is small; fractions need room to stay legible */
+  line-height: normal;
+}
