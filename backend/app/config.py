@@ -1,10 +1,16 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 JWT_SECRET_PLACEHOLDER = "change-me"
 
+# The single .env lives at the repository root (shared with Docker Compose).
+# In the Docker image it doesn't exist; Compose passes the values as env vars instead.
+ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ROOT_ENV, extra="ignore")
 
     DATABASE_URL: str = "postgresql+asyncpg://raguser:ragpass@localhost:5432/notebooklm"
 

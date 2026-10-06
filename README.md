@@ -105,11 +105,13 @@ frontend. Requires [uv](https://docs.astral.sh/uv/) and Node.js 22+.
 
 ```bash
 docker compose up -d db                 # Postgres on localhost:5432
+
+cd backend
 uv sync                                 # Python dependencies
 uv run alembic upgrade head             # create / update tables
 uv run uvicorn app.main:app --port 8000 # API on :8000
 
-cd frontend
+cd frontend                             # in a second terminal, from the repo root
 npm install
 npm run dev                             # app on http://localhost:5173
 ```
@@ -118,7 +120,8 @@ Vite forwards `/api` to `http://localhost:8000`; to use another port, start it
 with `API_TARGET=http://localhost:8001 npm run dev`. Interactive API docs are at
 <http://localhost:8000/docs>.
 
-After changing the database models, add a migration in `alembic/versions/`.
+The backend reads the `.env` at the repository root. After changing the database
+models, add a migration in `backend/alembic/versions/`.
 
 ## Configuration
 
@@ -160,29 +163,32 @@ register/login. Resources owned by another user return `404`.
 ## Project layout
 
 ```text
-app/                     FastAPI backend
-  main.py                app setup, startup tasks
-  config.py              settings from .env
-  models.py              User, Notebook, Document, Chunk, Message
-  security.py            password hashing, session tokens, login rate limit
-  deps.py                current user + ownership checks
-  routers/               auth, notebooks, documents, chat
-  services/
-    ingest.py            background PDF processing
-    pdf_parser.py        PDF → text per page
-    chunking.py          text → overlapping chunks with page numbers
-    embeddings.py        local sentence-transformers model
-    retrieval.py         pgvector similarity search
-    llm.py               prompt, Groq streaming, citation parsing
-    storage.py           PDF files on disk
-alembic/                 database migrations
-frontend/                React + TypeScript (Vite, Tailwind, TanStack Query, react-pdf)
-  src/api/               API client, SSE stream reader, data hooks
-  src/pages/             sign-in, notebooks, workspace
-  src/components/        sources panel, chat, PDF viewer, UI parts
-  nginx.conf             serves the app and proxies /api
-Dockerfile               backend image
-docker-compose.yml       db + backend + frontend
+backend/                   FastAPI backend (Python, managed with uv)
+  app/
+    main.py                app setup, startup tasks
+    config.py              settings from the root .env
+    models.py              User, Notebook, Document, Chunk, Message
+    security.py            password hashing, session tokens, login rate limit
+    deps.py                current user + ownership checks
+    routers/               auth, notebooks, documents, chat
+    services/
+      ingest.py            background PDF processing
+      pdf_parser.py        PDF → text per page
+      chunking.py          text → overlapping chunks with page numbers
+      embeddings.py        local sentence-transformers model
+      retrieval.py         pgvector similarity search
+      llm.py               prompt, Groq streaming, citation parsing
+      storage.py           PDF files on disk
+  alembic/                 database migrations
+  Dockerfile               backend image
+  pyproject.toml, uv.lock  Python dependencies
+frontend/                  React + TypeScript (Vite, Tailwind, TanStack Query, react-pdf)
+  src/api/                 API client, SSE stream reader, data hooks
+  src/pages/               sign-in, notebooks, workspace
+  src/components/          sources panel, chat, PDF viewer, UI parts
+  nginx.conf               serves the app and proxies /api
+docker-compose.yml         db + backend + frontend
+.env.example               configuration template (copy to .env)
 ```
 
 ## Design decisions
