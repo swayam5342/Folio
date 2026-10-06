@@ -2,9 +2,9 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Text, Enum
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Computed, String, Integer, ForeignKey, DateTime, Text, Enum
+from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
+from sqlalchemy.orm import deferred, relationship
 from pgvector.sqlalchemy import Vector
 
 from app.database import Base
@@ -24,6 +24,11 @@ class DocumentStatus(str, enum.Enum):
 class MessageRole(str, enum.Enum):
     user = "user"
     assistant = "assistant"
+
+
+class StudyKind(str, enum.Enum):
+    quiz = "quiz"
+    flashcards = "flashcards"
 
 
 class User(Base):
@@ -49,6 +54,7 @@ class Notebook(Base):
     user = relationship("User", back_populates="notebooks")
     documents = relationship("Document", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
     messages = relationship("Message", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
+    study_sets = relationship("StudySet", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
 
     def touch(self) -> None:
         self.updated_at = utcnow()
@@ -63,6 +69,7 @@ class Document(Base):
     storage_path = Column(String, nullable=False)
     size_bytes = Column(Integer, nullable=False, default=0)
     page_count = Column(Integer, nullable=False, default=0)
+    ocr_pages = Column(Integer, nullable=False, default=0)
     status = Column(
         Enum(DocumentStatus, native_enum=False, length=16),
         nullable=False,
@@ -84,6 +91,8 @@ class Chunk(Base):
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
     embedding = Column(Vector(settings.EMBEDDING_DIM))
+    # Maintained by Postgres for keyword search; never loaded or written by the app.
+    content_tsv = deferred(Column(TSVECTOR, Computed("to_tsvector('english', content)", persisted=True)))
 
     document = relationship("Document", back_populates="chunks")
 
@@ -99,3 +108,19 @@ class Message(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="messages")
+
+
+class StudySet(Base):
+    __tablename__ = "study_sets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    notebook_id = Column(UUID(as_uuid=True), ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(Enum(StudyKind, native_enum=False, length=16), nullable=False)
+    title = Column(String(120), nullable=False)
+    topic = Column(Text, nullable=True)
+    document_ids = Column(JSONB, nullable=False, default=list)
+    items = Column(JSONB, nullable=False, default=list)
+    last_score = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    notebook = relationship("Notebook", back_populates="study_sets")
