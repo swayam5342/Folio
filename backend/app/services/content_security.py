@@ -28,8 +28,12 @@ PII_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-class UnsafePDFError(ValueError):
+class UnsafeSourceError(ValueError):
     """A safe, user-displayable upload rejection."""
+
+
+class UnsafePDFError(UnsafeSourceError):
+    """A PDF-specific upload rejection."""
 
 
 @dataclass

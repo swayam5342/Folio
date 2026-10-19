@@ -1,4 +1,4 @@
-"""Background processing of uploaded PDFs: extract → chunk → embed → store.
+"""Background processing of uploaded sources: extract → sanitize → chunk → embed → store.
 
 The same job re-indexes an existing document (e.g. after CHUNK_STRATEGY changes):
 the old chunks are replaced in the same transaction that stores the new ones."""
@@ -10,16 +10,15 @@ from sqlalchemy import delete, update
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import Chunk, Document, DocumentStatus, Notebook
-from app.services import content_security, storage
+from app.models import Chunk, Document, DocumentStatus, Notebook, utcnow
+from app.services import content_security, extractors, storage
 from app.services.chunking import assemble_pages, chunk_document, embedding_text
 from app.services.embeddings import embed_texts
-from app.services.pdf_parser import extract_pages_from_pdf
 
 log = logging.getLogger(__name__)
 
-NO_TEXT_ERROR = "No readable text found, even with OCR."
-UNREADABLE_ERROR = "This file couldn't be read as a PDF."
+NO_TEXT_ERROR = "No readable text found in this source."
+UNREADABLE_ERROR = "This file couldn't be read as a {label}."
 GENERIC_ERROR = "Processing failed — please try uploading again."
 INTERRUPTED_ERROR = "Processing was interrupted — please re-upload."
 
@@ -39,9 +38,9 @@ def extract_and_embed(
     """Source bytes → (page_count, ocr_pages, chunks, embeddings, risk, reasons, pii, pages).
     pages is the sanitized page text the chunk offsets point into. CPU-bound: run it in a thread."""
     try:
-        page_count, pages, ocr_pages = extract_pages_from_pdf(data)
+        page_count, pages, ocr_pages = extractors.extract(kind, data)
     except Exception as exc:
-        raise IngestError(UNREADABLE_ERROR) from exc
+        raise IngestError(UNREADABLE_ERROR.format(label=extractors.LABELS.get(kind, "file"))) from exc
     # Mask and normalize before chunking, so chunks, offsets and the stored viewer text agree.
     pages, pii_summary, had_invisible = content_security.sanitize_pages(pages, redact_pii=redact_pii)
     if not pages:
@@ -90,9 +89,11 @@ async def process_document(document_id: uuid.UUID) -> None:
         redact_pii = bool(settings.ENABLE_PII_REDACTION and notebook and notebook.pii_redaction_enabled)
         try:
             data = storage.absolute(document.storage_path).read_bytes()
-            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary, _pages = await asyncio.to_thread(
+            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary, pages = await asyncio.to_thread(
                 extract_and_embed, data, document.kind, settings.CHUNK_STRATEGY, redact_pii=redact_pii
             )
+            if document.kind != "pdf":  # the text viewer shows exactly the text the chunks came from
+                await asyncio.to_thread(storage.save_pages, document.storage_path, pages)
         except IngestError as exc:
             await _mark_failed(document_id, str(exc))
             return
@@ -114,6 +115,7 @@ async def process_document(document_id: uuid.UUID) -> None:
         document.pii_summary = pii_summary
         document.status = DocumentStatus.ready
         document.error = None
+        document.indexed_at = utcnow()
         await db.commit()
 
 

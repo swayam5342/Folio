@@ -84,6 +84,27 @@ class DocumentOut(ORMModel):
         return getattr(v, "value", v)
 
 
+class TextSourceCreate(BaseModel):
+    """Pasted text, stored as a source named by its title."""
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+    text: Annotated[str, StringConstraints(min_length=1, max_length=2_000_000)]
+
+    @field_validator("text")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("text must not be empty")
+        return v
+
+
+class PageOut(BaseModel):
+    """A page (or slide) of a non-PDF source as the text viewer shows it; chunk
+    char_start/char_end offsets index into text."""
+    page_number: int
+    text: str
+    blocks: list[dict]
+
+
 # --- Chat ---------------------------------------------------------------
 
 class ChatRequest(BaseModel):
