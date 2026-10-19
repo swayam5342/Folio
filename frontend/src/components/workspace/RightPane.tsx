@@ -12,6 +12,7 @@ import RetrievalInspector from './RetrievalInspector'
 
 // pdf.js is large; load it only when a document is first opened.
 const PdfViewer = lazy(() => import('./PdfViewer'))
+const TextViewer = lazy(() => import('./TextViewer'))
 
 const TABS: { id: RightTab; label: string; Icon: typeof FileText }[] = [
   { id: 'viewer', label: 'Viewer', Icon: FileText },
@@ -19,7 +20,7 @@ const TABS: { id: RightTab; label: string; Icon: typeof FileText }[] = [
   { id: 'citations', label: 'Citations', Icon: ListTree },
 ]
 
-/** Right-hand pane: the PDF viewer, the Retrieval Inspector and the Citations list. */
+/** Right-hand pane: the document viewer, the Retrieval Inspector and the Citations list. */
 export default function RightPane({
   notebookId,
   docs,
@@ -39,6 +40,9 @@ export default function RightPane({
   const latest = [...answers].reverse().find((m) => m.confidence) ?? answers.at(-1) ?? null
   const message = (inspectedId && answers.find((m) => m.id === inspectedId)) || latest
   const traceId = message?.confidence ? message.id : null
+  const viewedDoc = viewer ? docs.find((d) => d.id === viewer.documentId) : undefined
+  // Sources other than PDFs open in the text reader (their kind is known once the list has loaded).
+  const Viewer = viewedDoc && viewedDoc.kind !== 'pdf' ? TextViewer : PdfViewer
 
   return (
     <section aria-label="Viewer and inspector" className="flex h-full min-h-0 flex-col bg-paper">
@@ -82,7 +86,7 @@ export default function RightPane({
               key={viewer.nonce}
               fallback={() => (
                 <div className="flex h-full flex-col items-center justify-center gap-3 bg-sunken px-6 text-center">
-                  <p className="font-medium">This PDF couldn’t be displayed.</p>
+                  <p className="font-medium">This source couldn’t be displayed.</p>
                   <p className="text-sm text-muted">Try reloading the page. The cited text is still shown when you hover a citation.</p>
                   <button type="button" onClick={closeViewer} className="text-sm font-medium underline underline-offset-4">
                     Close viewer
@@ -97,9 +101,9 @@ export default function RightPane({
                   </div>
                 }
               >
-                <PdfViewer
+                <Viewer
                   target={viewer}
-                  document={docs.find((d) => d.id === viewer.documentId)}
+                  document={viewedDoc}
                   color={colors.get(viewer.documentId) ?? 1}
                   beamFrom={beam && beam.nonce === viewer.nonce ? beam : null}
                   onClose={closeViewer}

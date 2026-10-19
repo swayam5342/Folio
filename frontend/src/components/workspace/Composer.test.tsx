@@ -11,6 +11,7 @@ const doc = (id: string, filename: string): SourceDocument => ({
   id,
   notebook_id: 'nb',
   filename,
+  kind: 'pdf',
   page_count: 5,
   ocr_pages: 0,
   size_bytes: 1000,
@@ -19,6 +20,9 @@ const doc = (id: string, filename: string): SourceDocument => ({
   risk_score: 0,
   risk_reasons: [],
   pii_summary: {},
+  summary: null,
+  summary_status: null,
+  indexed_at: null,
   created_at: `2026-10-0${id.length}T00:00:00Z`,
 })
 

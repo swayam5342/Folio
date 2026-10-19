@@ -1,17 +1,27 @@
-import { Check, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Check, ClipboardType, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 
-import { useDeleteDocument, useDocuments, useNotebook, useReindexDocument, useUpdateNotebookSettings, useUploadDocument } from '../../api/queries'
+import {
+  useAddTextSource,
+  useDeleteDocument,
+  useDocuments,
+  useNotebook,
+  useReindexDocument,
+  useUpdateNotebookSettings,
+  useUploadDocument,
+} from '../../api/queries'
 import type { SourceDocument } from '../../api/types'
 import { formatBytes } from '../../lib/format'
 import { spring, STAGGER } from '../../lib/motion'
 import { sourceColorStyle } from '../../lib/sourceColors'
 import { useSourceColor } from '../../lib/useSourceColors'
+import { KIND_LABEL, UPLOAD_ACCEPT, UPLOAD_EXTENSIONS } from '../../lib/sourceLocation'
 import { useWorkspace } from '../../lib/workspace'
 import { AlertIcon, FileIcon, MoreIcon, UploadIcon } from '../ui/icons'
 import { useConfirm, useToast } from '../ui/overlay'
 import { IconButton, Menu, Spinner, cx } from '../ui/primitives'
+import PasteTextDialog from './PasteTextDialog'
 
 const MAX_MB = 50
 
@@ -38,6 +48,36 @@ function ReadyBurst() {
       animate={{ scale: 1.9, opacity: 0 }}
       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
     />
+  )
+}
+
+/** "12 pages, 2 OCR · 1.2 MB", "8 slides · 300 KB", or just the size for single-page kinds. */
+function sourceMeta(doc: SourceDocument): string {
+  const size = formatBytes(doc.size_bytes)
+  if (doc.kind === 'pptx') return `${doc.page_count} ${doc.page_count === 1 ? 'slide' : 'slides'} · ${size}`
+  if (doc.kind !== 'pdf') return size
+  return `${doc.page_count} ${doc.page_count === 1 ? 'page' : 'pages'}${doc.ocr_pages ? `, ${doc.ocr_pages} OCR` : ''} · ${size}`
+}
+
+/** The source's LLM-written overview: clamped to three lines, expandable. */
+function SourceSummary({ doc }: { doc: SourceDocument }) {
+  const [open, setOpen] = useState(false)
+  if (doc.summary_status === 'pending') {
+    return <p className="w-full px-3 pb-2.5 pl-[3.25rem] text-xs italic text-faint">Writing a summary…</p>
+  }
+  if (!doc.summary) return null
+  return (
+    <div className="w-full px-3 pb-2.5 pl-[3.25rem] text-xs leading-relaxed text-muted">
+      <p className={cx(!open && 'line-clamp-3')}>{doc.summary}</p>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="mt-0.5 font-medium text-ink underline-offset-2 hover:underline"
+      >
+        {open ? 'Less' : 'More'}
+      </button>
+    </div>
   )
 }
 
@@ -85,7 +125,7 @@ function SourceCard({
       transition={{ ...spring.gentle, delay: Math.min(index, 8) * STAGGER }}
       style={sourceColorStyle(color)}
       className={cx(
-        'group relative flex items-start overflow-hidden rounded-lg border bg-surface transition-colors',
+        'group relative flex flex-wrap items-start overflow-hidden rounded-lg border bg-surface transition-colors',
         active ? 'border-[var(--src)] shadow-[0_0_0_3px_var(--src-soft)]' : 'border-line hover:border-line-strong',
       )}
     >
@@ -122,8 +162,13 @@ function SourceCard({
           </span>
         )}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium" title={doc.filename}>
-            {doc.filename}
+          <span className="flex items-center gap-1.5">
+            <span className="min-w-0 truncate text-sm font-medium" title={doc.filename}>
+              {doc.filename}
+            </span>
+            <span className="shrink-0 rounded-sm bg-sunken px-1 font-mono text-[9px] font-semibold tracking-wide text-muted">
+              {KIND_LABEL[doc.kind] ?? 'PDF'}
+            </span>
           </span>
           <span className={cx('mt-0.5 block text-xs', doc.status === 'failed' ? 'text-danger' : 'text-muted')}>
             {doc.status === 'processing'
@@ -132,7 +177,7 @@ function SourceCard({
                 ? doc.error
                 : justReady
                   ? 'Indexed and ready'
-                  : `${doc.page_count} ${doc.page_count === 1 ? 'page' : 'pages'}${doc.ocr_pages ? `, ${doc.ocr_pages} OCR` : ''} · ${formatBytes(doc.size_bytes)}`}
+                  : sourceMeta(doc)}
           </span>
           {ready && doc.risk_score > 0 && (
             <span
@@ -153,6 +198,7 @@ function SourceCard({
           )}
         </span>
       </button>
+      {ready && <SourceSummary doc={doc} />}
       <div className="absolute right-1.5 top-2">
         <Menu
           trigger={(props) => (
@@ -175,6 +221,7 @@ export default function SourcesPanel({ notebookId }: { notebookId: string }) {
   const notebook = useNotebook(notebookId)
   const documents = useDocuments(notebookId)
   const upload = useUploadDocument(notebookId)
+  const addText = useAddTextSource(notebookId)
   const remove = useDeleteDocument(notebookId)
   const reindex = useReindexDocument(notebookId)
   const settings = useUpdateNotebookSettings()
@@ -184,16 +231,29 @@ export default function SourcesPanel({ notebookId }: { notebookId: string }) {
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(0)
+  const [pasting, setPasting] = useState(false)
 
-  // The command palette's "Upload PDF" opens the file picker.
+  const submitText = (title: string, text: string) =>
+    addText.mutate(
+      { title, text },
+      {
+        onSuccess: () => {
+          setPasting(false)
+          toast(`Added “${title}”. Indexing…`)
+        },
+        onError: (e) => toast(e.message, 'error'),
+      },
+    )
+
+  // The command palette's "Add a source" opens the file picker.
   useEffect(() => {
     if (uploadNonce) input.current?.click()
   }, [uploadNonce])
 
   const addFiles = (files: FileList | File[]) => {
     for (const file of Array.from(files)) {
-      if (!file.name.toLowerCase().endsWith('.pdf')) {
-        toast(`${file.name} isn't a PDF — only PDFs are supported.`, 'error')
+      if (!UPLOAD_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))) {
+        toast(`${file.name}: supported files are PDF, Word (.docx), PowerPoint (.pptx), Markdown and text.`, 'error')
         continue
       }
       if (file.size > MAX_MB * 1024 * 1024) {
@@ -326,15 +386,15 @@ export default function SourcesPanel({ notebookId }: { notebookId: string }) {
           {uploading > 0 ? <Spinner size={18} /> : <UploadIcon />}
           <span>
             <span className="block font-medium text-ink">
-              {dragging ? 'Drop to add' : uploading > 0 ? 'Uploading…' : 'Add PDF'}
+              {dragging ? 'Drop to add' : uploading > 0 ? 'Uploading…' : 'Add source'}
             </span>
-            <span className="block text-xs">Click or drop files, up to {MAX_MB} MB each</span>
+            <span className="block text-xs">PDF, Word, PowerPoint, Markdown or text, up to {MAX_MB} MB each</span>
           </span>
         </button>
         <input
           ref={input}
           type="file"
-          accept="application/pdf,.pdf"
+          accept={UPLOAD_ACCEPT}
           multiple
           hidden
           onChange={(e) => {
@@ -342,6 +402,14 @@ export default function SourcesPanel({ notebookId }: { notebookId: string }) {
             e.target.value = ''
           }}
         />
+        <button
+          type="button"
+          onClick={() => setPasting(true)}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium text-muted transition-colors hover:bg-sunken hover:text-ink"
+        >
+          <ClipboardType aria-hidden size={14} /> Paste text
+        </button>
+        {pasting && <PasteTextDialog busy={addText.isPending} onSubmit={submitText} onClose={() => setPasting(false)} />}
       </div>
 
       <div className="mt-3 flex-1 overflow-y-auto px-3 pb-4">
@@ -353,7 +421,7 @@ export default function SourcesPanel({ notebookId }: { notebookId: string }) {
           <p className="p-3 text-sm text-danger">{documents.error.message}</p>
         ) : docs.length === 0 ? (
           <p className="px-2 py-3 text-sm text-muted">
-            No sources yet. Add a PDF and Folio will index it so you can ask questions about it.
+            No sources yet. Add a file or paste some text and Folio will index it so you can ask questions about it.
           </p>
         ) : (
           <ul className="space-y-2">

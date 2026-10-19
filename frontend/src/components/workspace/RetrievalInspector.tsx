@@ -1,4 +1,4 @@
-import { TriangleAlert } from 'lucide-react'
+import { TriangleAlert, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 
@@ -9,6 +9,7 @@ import { sourceColorStyle } from '../../lib/sourceColors'
 import { useSourceColor } from '../../lib/useSourceColors'
 import { Spinner, cx } from '../ui/primitives'
 import type { OpenSource } from './CitationChip'
+import { isPaged, sourceLabel, sourceLocation } from '../../lib/sourceLocation'
 
 const CONFIDENCE: Record<Confidence, { label: string; className: string; hint: string; fill: number }> = {
   high: { label: 'High retrieval match', className: 'bg-ok-soft text-ok', hint: 'The best passage clearly matches the question.', fill: 1 },
@@ -156,6 +157,13 @@ function Queries({ trace }: { trace: Trace }) {
           <dd className="mt-0.5 italic text-muted">{trace.hypothetical}</dd>
         </div>
       )}
+      {trace.cached && (
+        <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2 py-1.5 text-xs text-accent">
+          <Zap aria-hidden size={13} />
+          Answered from cache: this question was asked before over the same sources. The scores and timings below are the
+          original answer’s.
+        </div>
+      )}
       {trace.planner.error && (
         <div className="text-xs text-warn">Query rewriting was skipped ({trace.planner.error}); the question was searched as asked.</div>
       )}
@@ -168,8 +176,11 @@ const asSource = (c: TraceCandidate): Source => ({
   chunk_id: c.chunk_id,
   document_id: c.document_id,
   filename: c.filename,
+  document_kind: c.document_kind,
   page_number: c.page_number,
   section_title: c.section_title,
+  char_start: c.char_start,
+  char_end: c.char_end,
   snippet: c.snippet,
   score: c.rerank_score ?? c.vector_similarity,
   support: c.support,
@@ -183,7 +194,7 @@ function CandidateRow({ c, rank, reranked, onOpen }: { c: TraceCandidate; rank: 
       <button
         type="button"
         onClick={() => onOpen(asSource(c))}
-        aria-label={`Open ${c.filename}, page ${c.page_number}${c.marker ? ` (cited as ${c.marker})` : ''}`}
+        aria-label={`Open ${sourceLabel(c)}${c.marker ? ` (cited as ${c.marker})` : ''}`}
         title={c.snippet}
         className={cx(
           'grid w-full grid-cols-[1.5rem_minmax(0,1fr)_5.5rem] items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-sunken',
@@ -195,7 +206,8 @@ function CandidateRow({ c, rank, reranked, onOpen }: { c: TraceCandidate; rank: 
           <span className="flex items-center gap-1.5">
             <span aria-hidden className="size-2 shrink-0 rounded-full bg-[var(--src)]" />
             <span className="truncate font-medium">
-              {c.filename}, p. {c.page_number}
+              {c.filename}
+              {isPaged(c) && `, ${sourceLocation(c)}`}
             </span>
             {c.marker && <span className="shrink-0 rounded-sm bg-ink px-1 font-mono text-[10px] text-paper">{c.marker}</span>}
             {c.support === 'low' && <TriangleAlert aria-label="Low support" size={12} className="shrink-0 text-warn" />}

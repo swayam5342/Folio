@@ -10,6 +10,7 @@ import { sourceColorStyle } from '../../lib/sourceColors'
 import { highlightSegments } from '../../lib/terms'
 import { useSourceColor } from '../../lib/useSourceColors'
 import { cx } from '../ui/primitives'
+import { isPaged, sourceLabel, sourceLocation } from '../../lib/sourceLocation'
 
 export type OpenSource = (source: Source, origin?: { x: number; y: number }) => void
 
@@ -83,7 +84,7 @@ export function CitationChip({
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
           style={sourceColorStyle(color)}
-          aria-label={`Source ${n}: ${source.filename}, page ${source.page_number}${low ? ' (low support)' : ''}`}
+          aria-label={`Source ${n}: ${sourceLabel(source)}${low ? ' (low support)' : ''}`}
           className={cx(
             'relative ml-0.5 inline-flex h-[1.3em] min-w-[1.5em] items-center justify-center gap-0.5 rounded-sm px-1 align-[0.12em] font-sans text-[0.68em] font-semibold leading-none',
             'bg-[var(--src-soft)] text-[var(--src-ink)] ring-1 ring-[var(--src)]/40 transition-transform hover:-translate-y-px',
@@ -106,7 +107,7 @@ export function CitationChip({
             <span className="flex items-center gap-2">
               <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-[var(--src)]" />
               <span className="min-w-0 truncate font-medium">{source.filename}</span>
-              <span className="ml-auto shrink-0 font-mono text-xs text-muted">p. {source.page_number}</span>
+              {isPaged(source) && <span className="ml-auto shrink-0 font-mono text-xs text-muted">{sourceLocation(source)}</span>}
             </span>
             {source.section_title && <span className="mt-1 block truncate text-xs text-muted">{source.section_title}</span>}
             <span className="mt-2 line-clamp-5 block border-l-2 border-[var(--src)] pl-2.5 text-muted">

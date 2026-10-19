@@ -95,7 +95,7 @@ function GenerateForm({
       <fieldset className="mt-6">
         <legend className="text-sm font-medium">Sources</legend>
         {ready.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">No ready sources yet. Add a PDF and wait for it to finish indexing.</p>
+          <p className="mt-2 text-sm text-muted">No ready sources yet. Add a source and wait for it to finish indexing.</p>
         ) : (
           <div className="mt-2 space-y-1.5">
             {ready.map((doc) => (

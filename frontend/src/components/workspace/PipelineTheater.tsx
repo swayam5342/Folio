@@ -6,6 +6,7 @@ import type { ChatStage, RetrievalEvent } from '../../api/types'
 import { spring, STAGGER } from '../../lib/motion'
 import { sourceColorStyle } from '../../lib/sourceColors'
 import { cx } from '../ui/primitives'
+import { isPaged, sourceLabel, sourceLocation } from '../../lib/sourceLocation'
 
 type StepId = 'plan' | 'search' | 'rerank' | 'read' | 'generate' | 'verify'
 
@@ -155,11 +156,12 @@ export default function PipelineTheater({
                   transition={{ ...spring.pop, delay: i * STAGGER * 2 }}
                   style={sourceColorStyle(colors.get(p.document_id) ?? 1)}
                   className="flex max-w-56 items-center gap-1.5 rounded-md border border-[var(--src)] bg-[var(--src-soft)] px-2 py-1 text-xs text-[var(--src-ink)]"
-                  title={`${p.filename}, page ${p.page_number}${p.section_title ? ` · ${p.section_title}` : ''}`}
+                  title={`${sourceLabel(p)}${p.section_title && isPaged(p) ? ` · ${p.section_title}` : ''}`}
                 >
                   <span className="font-mono font-semibold">{p.marker}</span>
                   <span className="truncate">
-                    {p.filename.replace(/\.pdf$/i, '')} · p.{p.page_number}
+                    {p.filename.replace(/\.(pdf|docx|pptx|md|txt)$/i, '')}
+                    {isPaged(p) && ` · ${sourceLocation(p)}`}
                   </span>
                 </motion.li>
               ))}

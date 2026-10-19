@@ -4,6 +4,7 @@ import type { FlashcardItem, Source, StudySet } from '../../api/types'
 import { ChevronLeft, ChevronRight } from '../ui/icons'
 import { Button, IconButton } from '../ui/primitives'
 import { CitationChip } from './CitationChip'
+import { sourceLabel } from '../../lib/sourceLocation'
 
 function shuffled(n: number): number[] {
   const order = Array.from({ length: n }, (_, i) => i)
@@ -100,7 +101,7 @@ export default function FlashcardPlayer({
             <span className="text-xs font-medium text-faint">Back</span>
             <span className="font-serif text-xl leading-relaxed">{card.back}</span>
             <span className="text-xs text-faint">
-              {card.source.filename}, page {card.source.page_number}
+              {sourceLabel(card.source)}
             </span>
           </span>
         </button>

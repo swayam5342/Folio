@@ -15,10 +15,14 @@ export type Notebook = {
 
 export type DocumentStatus = 'processing' | 'ready' | 'failed'
 
+/** pdf | docx | pptx | txt | md | text (pasted text) */
+export type SourceKind = 'pdf' | 'docx' | 'pptx' | 'txt' | 'md' | 'text'
+
 export type SourceDocument = {
   id: string
   notebook_id: string
   filename: string
+  kind: SourceKind
   page_count: number
   ocr_pages: number
   size_bytes: number
@@ -27,7 +31,20 @@ export type SourceDocument = {
   risk_score: number
   risk_reasons: string[]
   pii_summary: Record<string, number>
+  /** Short overview written after indexing; null until done (or when it failed). */
+  summary: string | null
+  summary_status: 'pending' | 'done' | 'failed' | null
+  /** When the current chunks (and viewer text) were stored. */
+  indexed_at: string | null
   created_at: string
+}
+
+/** A page (or slide) of a non-PDF source, as GET /documents/{id}/pages returns it. */
+export type SourcePage = {
+  page_number: number
+  text: string
+  /** Each block's [start, end) range in text. */
+  blocks: { kind: 'heading' | 'body' | 'code' | 'table'; start: number; end: number }[]
 }
 
 export type Source = {
@@ -35,8 +52,13 @@ export type Source = {
   chunk_id: string
   document_id: string
   filename: string
+  document_kind?: SourceKind
+  /** Slide number for pptx; 1 for single-page kinds. */
   page_number: number
   section_title?: string | null
+  /** The chunk's range in the page text (non-PDF sources). */
+  char_start?: number | null
+  char_end?: number | null
   snippet: string
   /** Relevance to the question: reranker score (0-1), else cosine similarity. */
   score?: number | null
@@ -75,6 +97,7 @@ export type RetrievalEvent = {
     marker: string
     document_id: string
     filename: string
+    document_kind?: SourceKind
     page_number: number
     section_title: string | null
     score: number | null
@@ -86,8 +109,11 @@ export type TraceCandidate = {
   chunk_id: string
   document_id: string
   filename: string
+  document_kind?: SourceKind
   page_number: number
   section_title: string | null
+  char_start?: number | null
+  char_end?: number | null
   snippet: string
   vector_rank: number | null
   keyword_rank: number | null
@@ -120,13 +146,18 @@ export type RetrievalTrace = {
   total_ms: number
   tokens: { planner: TokenUsage; answer: TokenUsage }
   citation_coverage?: number | null
+  /** Answered from the answer cache: the scores and timings are the original answer's. */
+  cached?: boolean
 }
 
-/** What the PDF viewer should show. */
+/** What the document viewer should show. */
 export type ViewerTarget = {
   documentId: string
   page: number
   snippet?: string
+  /** The cited range in the page text (text viewer only). */
+  charStart?: number | null
+  charEnd?: number | null
   /** Changes on every open so re-clicking the same citation re-triggers the highlight. */
   nonce: number
 }

@@ -127,7 +127,7 @@ export default function LoginPage() {
         <Wordmark className="text-2xl" />
         <SampleAnswer />
         <p className="max-w-sm text-sm text-muted">
-          Upload PDFs, ask questions, and every answer points to the page it came from.
+          Add PDFs, slides, docs and notes, ask questions, and every answer points to the passage it came from.
         </p>
       </section>
 

@@ -5,6 +5,7 @@ import type { QuizItem, Source, StudySet } from '../../api/types'
 import { ChevronLeft } from '../ui/icons'
 import { Button, cx } from '../ui/primitives'
 import { CitationChip } from './CitationChip'
+import { sourceLabel } from '../../lib/sourceLocation'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 
@@ -158,7 +159,7 @@ export default function QuizPlayer({
             <CitationChip citation={{ n: 1, source: item.source }} onOpen={onOpenSource} />
           </p>
           <p className="mt-2 text-sm text-muted">
-            {item.source.filename}, page {item.source.page_number}
+            {sourceLabel(item.source)}
           </p>
         </div>
       )}

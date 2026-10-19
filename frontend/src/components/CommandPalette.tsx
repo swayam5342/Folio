@@ -73,10 +73,10 @@ function useWorkspaceItems(notebookId: string | undefined, search: string): Item
   const requestedPage = pageMatch ? Number(pageMatch[1]) : null
   const pageItems: Item[] = requestedPage
     ? ready
-        .filter((d) => requestedPage <= d.page_count)
+        .filter((d) => (d.kind === 'pdf' || d.kind === 'pptx') && requestedPage <= d.page_count)
         .map((d) => ({
           id: `page:${d.id}:${requestedPage}`,
-          label: `${d.filename.replace(/\.pdf$/i, '')} · page ${requestedPage}`,
+          label: `${d.filename.replace(/\.(pdf|pptx)$/i, '')} · ${d.kind === 'pptx' ? 'slide' : 'page'} ${requestedPage}`,
           group: 'Jump to page',
           color: colors.get(d.id),
           keywords: [`p${requestedPage}`, `page ${requestedPage}`],
@@ -85,7 +85,7 @@ function useWorkspaceItems(notebookId: string | undefined, search: string): Item
     : []
   return [
     { id: 'ask', label: 'Ask a question', group: 'Actions', icon: MessageSquare, run: ws.focusComposer, hint: 'Chat' },
-    { id: 'upload', label: 'Upload a PDF', group: 'Actions', icon: Upload, run: ws.requestUpload },
+    { id: 'upload', label: 'Add a source (PDF, Word, PowerPoint, text)', group: 'Actions', icon: Upload, run: ws.requestUpload },
     { id: 'quiz', label: 'New quiz', group: 'Actions', icon: FlaskConical, run: () => ws.requestStudy('quiz') },
     { id: 'flashcards', label: 'New flashcards', group: 'Actions', icon: Layers, run: () => ws.requestStudy('flashcards') },
     { id: 'inspector', label: 'Open Retrieval Inspector', group: 'Actions', icon: Activity, run: () => ws.inspect(null), keywords: ['trace', 'how'] },

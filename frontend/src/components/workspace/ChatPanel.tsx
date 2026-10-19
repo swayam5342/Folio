@@ -20,6 +20,7 @@ import { CitationChip, type OpenSource } from './CitationChip'
 import Composer from './Composer'
 import PipelineTheater from './PipelineTheater'
 import { ConfidenceBadge } from './RetrievalInspector'
+import { isPaged, sourceLabel } from '../../lib/sourceLocation'
 
 const STARTERS = [
   'Summarize these sources in a few paragraphs',
@@ -60,8 +61,8 @@ function NearestExcerpts({ sources, onOpen }: { sources: Source[]; onOpen: OpenS
               className="block w-full rounded-md border border-line bg-surface px-3 py-2 text-left text-sm transition-colors hover:border-line-strong"
             >
               <span className="block font-medium">
-                {s.filename}, page {s.page_number}
-                {s.section_title && <span className="font-normal text-muted"> · {s.section_title}</span>}
+                {sourceLabel(s)}
+                {s.section_title && isPaged(s) && <span className="font-normal text-muted"> · {s.section_title}</span>}
               </span>
               <span className="mt-0.5 line-clamp-2 block text-muted">{s.snippet}</span>
             </button>
@@ -107,8 +108,8 @@ function AssistantMessage({
                 onClick={() => onOpen(c.source!)}
                 className="min-w-0 truncate text-left text-muted hover:text-ink hover:underline"
               >
-                {c.source!.filename}, page {c.source!.page_number}
-                {c.source!.section_title && <span className="text-faint"> · {c.source!.section_title}</span>}
+                {sourceLabel(c.source!)}
+                {c.source!.section_title && isPaged(c.source!) && <span className="text-faint"> · {c.source!.section_title}</span>}
               </button>
             </li>
           ))}
@@ -288,10 +289,10 @@ export default function ChatPanel({
               </h3>
               <p className="mt-2 max-w-md text-muted">
                 {readyCount > 0
-                  ? 'Answers are written only from your PDFs. Each claim is marked so you can open the exact page it came from.'
+                  ? 'Answers are written only from your sources. Each claim is marked so you can open the exact passage it came from.'
                   : processingCount > 0
-                    ? 'Your PDF is being indexed. You can ask questions as soon as it’s ready.'
-                    : 'Upload a PDF from the Sources panel. Once it’s indexed you can ask questions about it here.'}
+                    ? 'Your source is being indexed. You can ask questions as soon as it’s ready.'
+                    : 'Add a source from the Sources panel (PDF, Word, PowerPoint, Markdown, text, or pasted text). Once it’s indexed you can ask questions about it here.'}
               </p>
               {readyCount > 0 && (
                 <div className="mt-6 flex flex-col items-start gap-2">

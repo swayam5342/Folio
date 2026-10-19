@@ -39,7 +39,10 @@ type WorkspaceState = {
   setRightOpen: (open: boolean) => void
   setSourcesOpen: (open: boolean) => void
   setMobileTab: (tab: MobileTab) => void
-  openSource: (source: Pick<Source, 'document_id' | 'page_number' | 'snippet'>, origin?: { x: number; y: number }) => void
+  openSource: (
+    source: Pick<Source, 'document_id' | 'page_number' | 'snippet' | 'char_start' | 'char_end'>,
+    origin?: { x: number; y: number },
+  ) => void
   openDocument: (documentId: string, page?: number) => void
   closeViewer: () => void
   inspect: (messageId: string | null, tab?: Exclude<RightTab, 'viewer'>) => void
@@ -86,7 +89,14 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
   openSource: (source, origin) => {
     const nonce = Date.now()
     set({
-      viewer: { documentId: source.document_id, page: source.page_number, snippet: source.snippet, nonce },
+      viewer: {
+        documentId: source.document_id,
+        page: source.page_number,
+        snippet: source.snippet,
+        charStart: source.char_start,
+        charEnd: source.char_end,
+        nonce,
+      },
       rightTab: 'viewer',
       rightOpen: true,
       mobileTab: 'side',

@@ -5,6 +5,7 @@ import { prepareAnswer } from '../../lib/citations'
 import { sourceColorStyle } from '../../lib/sourceColors'
 import { useSourceColor } from '../../lib/useSourceColors'
 import type { OpenSource } from './CitationChip'
+import { isPaged, sourceLocationLong } from '../../lib/sourceLocation'
 
 type Cited = { n: number; source: Source }
 
@@ -31,7 +32,7 @@ function Group({ filename, items, onOpen }: { filename: string; items: Cited[]; 
                 <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-[var(--src-soft)] px-1 font-semibold text-[var(--src-ink)]">
                   {n}
                 </span>
-                <span className="font-medium">Page {source.page_number}</span>
+                {isPaged(source) && <span className="font-medium capitalize">{sourceLocationLong(source)}</span>}
                 {source.section_title && <span className="min-w-0 truncate text-muted">· {source.section_title}</span>}
                 {typeof source.score === 'number' && (
                   <span className="ml-auto shrink-0 font-mono text-muted" title="Relevance to the question">

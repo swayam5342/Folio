@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, ApiError, json } from './client'
-import type { EvalResults, Message, Notebook, RetrievalTrace, SourceDocument, StudySet, StudySetCreate, StudySetSummary, User } from './types'
+import type { EvalResults, Message, Notebook, RetrievalTrace, SourceDocument, SourcePage, StudySet, StudySetCreate, StudySetSummary, User } from './types'
 
 export const keys = {
   me: ['me'] as const,
   notebooks: ['notebooks'] as const,
   notebook: (id: string) => ['notebooks', id] as const,
   documents: (notebookId: string) => ['notebooks', notebookId, 'documents'] as const,
+  pages: (documentId: string) => ['documents', documentId, 'pages'] as const,
   messages: (notebookId: string) => ['notebooks', notebookId, 'messages'] as const,
   trace: (messageId: string) => ['messages', messageId, 'trace'] as const,
   evalResults: ['eval-results'] as const,
@@ -121,8 +122,9 @@ export const useDocuments = (notebookId: string) =>
     queryKey: keys.documents(notebookId),
     queryFn: () => api<SourceDocument[]>(`/notebooks/${notebookId}/documents`),
     enabled: !!notebookId,
-    // Poll while anything is still being processed.
-    refetchInterval: (q) => (q.state.data?.some((d) => d.status === 'processing') ? 2000 : false),
+    // Poll while anything is still being processed or summarized.
+    refetchInterval: (q) =>
+      q.state.data?.some((d) => d.status === 'processing' || d.summary_status === 'pending') ? 2000 : false,
   })
 
 export function useUploadDocument(notebookId: string) {
@@ -137,6 +139,27 @@ export function useUploadDocument(notebookId: string) {
       qc.setQueryData<SourceDocument[]>(keys.documents(notebookId), (list) => [...(list ?? []), doc])
       qc.invalidateQueries({ queryKey: keys.notebooks, exact: true })
     },
+  })
+}
+
+export function useAddTextSource(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { title: string; text: string }) =>
+      api<SourceDocument>(`/notebooks/${notebookId}/documents/text`, { method: 'POST', ...json(body) }),
+    onSuccess: (doc) => {
+      qc.setQueryData<SourceDocument[]>(keys.documents(notebookId), (list) => [...(list ?? []), doc])
+      qc.invalidateQueries({ queryKey: keys.notebooks, exact: true })
+    },
+  })
+}
+
+/** Page text of a non-PDF source, for the text viewer. Re-fetched when the source is re-indexed. */
+export function useDocumentPages(documentId: string, indexedKey?: string) {
+  return useQuery({
+    queryKey: [...keys.pages(documentId), indexedKey ?? ''],
+    queryFn: () => api<SourcePage[]>(`/documents/${documentId}/pages`),
+    staleTime: Infinity,
   })
 }
 

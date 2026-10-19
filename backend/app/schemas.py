@@ -76,6 +76,7 @@ class DocumentOut(ORMModel):
     pii_summary: dict[str, int] = Field(default_factory=dict)
     summary: str | None = None
     summary_status: Literal["pending", "done", "failed"] | None = None
+    indexed_at: datetime | None = None
     created_at: datetime
 
     @field_validator("status", mode="before")
