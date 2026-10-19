@@ -67,6 +67,8 @@ class Document(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     notebook_id = Column(UUID(as_uuid=True), ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
     filename = Column(String, nullable=False)
+    # pdf | docx | pptx | txt | md | text (pasted); see services/extractors.py
+    kind = Column(String(8), nullable=False, default="pdf", server_default="pdf")
     storage_path = Column(String, nullable=False)
     size_bytes = Column(Integer, nullable=False, default=0)
     page_count = Column(Integer, nullable=False, default=0)
@@ -82,6 +84,9 @@ class Document(Base):
     risk_score = Column(Integer, nullable=False, default=0)
     risk_reasons = Column(JSONB, nullable=False, default=list)
     pii_summary = Column(JSONB, nullable=False, default=dict)
+    summary = Column(Text, nullable=True)  # short LLM overview, written after indexing
+    summary_status = Column(String(16), nullable=True)  # pending | done | failed; null = not attempted
+    indexed_at = Column(DateTime(timezone=True), nullable=True)  # when the current chunks were stored
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="documents")
@@ -124,6 +129,20 @@ class Message(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="messages")
+
+
+class AnswerCache(Base):
+    """A stored answer, reused when the same standalone question is asked over the same sources."""
+    __tablename__ = "answer_cache"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    notebook_id = Column(UUID(as_uuid=True), ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False)
+    key = Column(String(64), nullable=False)  # see services/answer_cache.cache_key
+    answer = Column(Text, nullable=False)
+    sources = Column(JSONB, nullable=False, default=list)
+    confidence = Column(String(8), nullable=True)
+    trace = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 
 class StudySet(Base):

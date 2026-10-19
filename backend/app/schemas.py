@@ -65,6 +65,7 @@ class DocumentOut(ORMModel):
     id: uuid.UUID
     notebook_id: uuid.UUID
     filename: str
+    kind: str = "pdf"
     page_count: int
     ocr_pages: int
     size_bytes: int
@@ -73,6 +74,8 @@ class DocumentOut(ORMModel):
     risk_score: int = 0
     risk_reasons: list[str] = Field(default_factory=list)
     pii_summary: dict[str, int] = Field(default_factory=dict)
+    summary: str | None = None
+    summary_status: Literal["pending", "done", "failed"] | None = None
     created_at: datetime
 
     @field_validator("status", mode="before")
@@ -94,8 +97,11 @@ class SourceOut(BaseModel):
     chunk_id: str
     document_id: str
     filename: str
-    page_number: int
+    document_kind: str = "pdf"
+    page_number: int  # the slide number for pptx; 1 for single-page kinds (docx, md, txt, text)
     section_title: str | None = None
+    char_start: int | None = None  # the chunk's range in the page text served by /documents/{id}/pages
+    char_end: int | None = None
     snippet: str
     score: float | None = None  # relevance to the question: reranker score (0-1), else cosine similarity
     support: Literal["ok", "low"] | None = None  # does the excerpt support the claims citing it?
@@ -124,8 +130,11 @@ class TraceCandidate(BaseModel):
     chunk_id: str
     document_id: str
     filename: str
+    document_kind: str = "pdf"
     page_number: int
     section_title: str | None
+    char_start: int | None = None
+    char_end: int | None = None
     snippet: str
     vector_rank: int | None
     keyword_rank: int | None
@@ -162,6 +171,7 @@ class TraceOut(BaseModel):
     total_ms: float
     tokens: dict[str, dict | None]
     citation_coverage: float | None = None
+    cached: bool = False  # answered from the answer cache; the timings are the original answer's
 
 
 # --- Study sets -----------------------------------------------------------
