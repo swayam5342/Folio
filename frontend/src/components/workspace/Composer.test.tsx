@@ -21,6 +21,7 @@ const doc = (id: string, filename: string): SourceDocument => ({
   risk_reasons: [],
   pii_summary: {},
   summary: null,
+  suggested_questions: [],
   summary_status: null,
   indexed_at: null,
   created_at: `2026-10-0${id.length}T00:00:00Z`,

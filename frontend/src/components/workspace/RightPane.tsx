@@ -1,8 +1,8 @@
 import { Activity, FileText, ListTree, PanelRightClose } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 
-import { useMessages } from '../../api/queries'
 import type { SourceDocument } from '../../api/types'
+import { useActiveThread } from '../../lib/useActiveThread'
 import { useSourceColors } from '../../lib/useSourceColors'
 import { useWorkspace, type RightTab } from '../../lib/workspace'
 import ErrorBoundary from '../ErrorBoundary'
@@ -32,11 +32,11 @@ export default function RightPane({
   onCollapse?: () => void
 }) {
   const { rightTab, setRightTab, viewer, closeViewer, inspectedId, beam, openSource } = useWorkspace()
-  const messages = useMessages(notebookId)
+  const { messages } = useActiveThread(notebookId)
   const colors = useSourceColors(notebookId)
 
   // Inspector and Citations follow the chosen answer, else the latest one that has a trace.
-  const answers = (messages.data ?? []).filter((m) => m.role === 'assistant')
+  const answers = messages.filter((m) => m.role === 'assistant')
   const latest = [...answers].reverse().find((m) => m.confidence) ?? answers.at(-1) ?? null
   const message = (inspectedId && answers.find((m) => m.id === inspectedId)) || latest
   const traceId = message?.confidence ? message.id : null

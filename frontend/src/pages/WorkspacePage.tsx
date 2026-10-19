@@ -1,4 +1,4 @@
-import { BookOpen, Command, FileText, Files, MessageSquare, PanelLeft, PanelRight } from 'lucide-react'
+import { BookOpen, Command, FileText, Files, MessageSquare, NotebookPen, PanelLeft, PanelRight } from 'lucide-react'
 import { useEffect, useMemo, useState, type RefObject } from 'react'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelImperativeHandle } from 'react-resizable-panels'
 import { Link, useParams } from 'react-router'
@@ -11,6 +11,7 @@ import { IconButton, Spinner, cx } from '../components/ui/primitives'
 import ChatPanel from '../components/workspace/ChatPanel'
 import RightPane from '../components/workspace/RightPane'
 import SourcesPanel from '../components/workspace/SourcesPanel'
+import NotesPanel from '../components/workspace/NotesPanel'
 import StudyPanel from '../components/workspace/StudyPanel'
 import { SourceColorsContext, useSourceColors } from '../lib/useSourceColors'
 import { useWorkspace, type MobileTab } from '../lib/workspace'
@@ -19,8 +20,8 @@ function ModeSwitch() {
   const center = useWorkspace((s) => s.center)
   const setCenter = useWorkspace((s) => s.setCenter)
   return (
-    <div className="inline-flex rounded-md border border-line-strong p-0.5" role="tablist" aria-label="Chat or study">
-      {(['chat', 'study'] as const).map((m) => (
+    <div className="inline-flex shrink-0 rounded-md border border-line-strong p-0.5" role="tablist" aria-label="Chat, study or notes">
+      {(['chat', 'study', 'notes'] as const).map((m) => (
         <button
           key={m}
           type="button"
@@ -28,7 +29,7 @@ function ModeSwitch() {
           aria-selected={center === m}
           onClick={() => setCenter(m)}
           className={cx(
-            'h-7 rounded px-3 font-serif text-[15px] font-semibold capitalize transition-colors',
+            'h-7 rounded px-2.5 font-serif text-[15px] font-semibold capitalize transition-colors sm:px-3',
             center === m ? 'bg-ink text-paper' : 'text-muted hover:text-ink',
           )}
         >
@@ -74,6 +75,7 @@ const MOBILE_TABS: { id: MobileTab; label: string; Icon: typeof Files }[] = [
   { id: 'chat', label: 'Chat', Icon: MessageSquare },
   { id: 'side', label: 'Viewer', Icon: FileText },
   { id: 'study', label: 'Study', Icon: BookOpen },
+  { id: 'notes', label: 'Notes', Icon: NotebookPen },
 ]
 
 function Workspace({ notebookId }: { notebookId: string }) {
@@ -132,6 +134,9 @@ function Workspace({ notebookId }: { notebookId: string }) {
       </div>
       <div className={cx('h-full', center !== 'study' && 'hidden')}>
         <StudyPanel notebookId={notebookId} switcher={switcher} />
+      </div>
+      <div className={cx('h-full', center !== 'notes' && 'hidden')}>
+        <NotesPanel notebookId={notebookId} switcher={switcher} />
       </div>
     </>
   )
@@ -227,7 +232,9 @@ function Workspace({ notebookId }: { notebookId: string }) {
             <div className="min-h-0 flex-1">
               {/* Chat and study stay mounted so a streaming answer survives tab switches. */}
               <div className={cx('h-full', mobileTab !== 'sources' && 'hidden')}>{sources}</div>
-              <div className={cx('h-full', mobileTab !== 'chat' && mobileTab !== 'study' && 'hidden')}>{centerPane}</div>
+              <div className={cx('h-full', mobileTab !== 'chat' && mobileTab !== 'study' && mobileTab !== 'notes' && 'hidden')}>
+                {centerPane}
+              </div>
               {mobileTab === 'side' && <RightPane notebookId={notebookId} docs={docs} />}
             </div>
             <nav

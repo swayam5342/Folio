@@ -12,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import AsyncSessionLocal, get_db
 from app.deps import get_owned_message, get_owned_notebook
-from app.models import AnswerCache, Document, DocumentStatus, Message, MessageRole, Notebook
+from app.models import AnswerCache, Document, DocumentStatus, Message, MessageRole, Notebook, Thread, utcnow
 from app.observability import StageTimer
 from app.schemas import ChatRequest, MessageOut, TraceOut
 from app.services import answer_cache, citation_check, llm, pipeline
 from app.services.chunking import embedding_text
+from app.routers.threads import NEW_THREAD_TITLE, latest_thread
 from app.services.query_planner import plan_queries
 
 router = APIRouter(prefix="/notebooks/{notebook_id}")
@@ -61,8 +62,30 @@ async def get_trace(message: Message = Depends(get_owned_message), db: AsyncSess
     return TraceOut(message_id=message.id, **trace)
 
 
+async def _resolve_thread(db: AsyncSession, notebook: Notebook, thread_id: uuid.UUID | None) -> Thread:
+    """The requested thread (404 unless it's in this notebook), else the latest, else a new one."""
+    if thread_id is not None:
+        thread = await db.get(Thread, thread_id)
+        if thread is None or thread.notebook_id != notebook.id:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        return thread
+    thread = await latest_thread(db, notebook.id)
+    if thread is None:
+        thread = Thread(notebook_id=notebook.id, title=NEW_THREAD_TITLE)
+        db.add(thread)
+        await db.flush()
+    return thread
+
+
+def _thread_title(question: str) -> str:
+    """A new chat is named after its first question."""
+    title = " ".join(question.split())
+    return title if len(title) <= 60 else title[:59].rstrip() + "…"
+
+
 async def _save_assistant(
     notebook_id: uuid.UUID,
+    thread_id: uuid.UUID,
     content: str,
     sources: list[dict],
     confidence: str | None = None,
@@ -73,6 +96,7 @@ async def _save_assistant(
     async with AsyncSessionLocal() as db:
         message = Message(
             notebook_id=notebook_id,
+            thread_id=thread_id,
             role=MessageRole.assistant,
             content=content,
             sources=sources,
@@ -84,6 +108,9 @@ async def _save_assistant(
         notebook = await db.get(Notebook, notebook_id)
         if notebook is not None:
             notebook.touch()
+        thread = await db.get(Thread, thread_id)
+        if thread is not None:
+            thread.updated_at = utcnow()
         await db.commit()
         await db.refresh(message)
         return MessageOut.model_validate(message)
@@ -133,9 +160,10 @@ async def chat(
     notebook: Notebook = Depends(get_owned_notebook),
     db: AsyncSession = Depends(get_db),
 ):
+    thread = await _resolve_thread(db, notebook, payload.thread_id)
     recent = (await db.scalars(
         select(Message)
-        .where(Message.notebook_id == notebook.id)
+        .where(Message.thread_id == thread.id)
         .order_by(Message.created_at.desc(), Message.id.desc())
         .limit(settings.HISTORY_MESSAGES + 1)
     )).all()[::-1]
@@ -145,14 +173,21 @@ async def chat(
     if recent and recent[-1].role == MessageRole.user and recent[-1].content == payload.question:
         user_message = recent.pop()
     else:
-        user_message = Message(notebook_id=notebook.id, role=MessageRole.user, content=payload.question, sources=[])
+        user_message = Message(
+            notebook_id=notebook.id, thread_id=thread.id, role=MessageRole.user, content=payload.question, sources=[]
+        )
         db.add(user_message)
+        if not recent and thread.title == NEW_THREAD_TITLE:
+            thread.title = _thread_title(payload.question)
     history = [(m.role.value, m.content) for m in recent[-settings.HISTORY_MESSAGES:]]
 
     notebook.touch()
+    thread.updated_at = utcnow()
     await db.commit()
 
     notebook_id = notebook.id
+    thread_id = thread.id
+    regenerate = payload.regenerate
     question = payload.question
     document_ids = payload.document_ids
 
@@ -170,7 +205,8 @@ async def chat(
                     # Keyed on the standalone question, so a follow-up only hits when it means the same thing.
                     fingerprint = await answer_cache.fingerprint(session, notebook_id)
                     key = answer_cache.cache_key(plan.standalone, document_ids, fingerprint)
-                    cached = await answer_cache.lookup(session, notebook_id, key)
+                    if not regenerate:  # a regenerated answer replaces the stored one instead
+                        cached = await answer_cache.lookup(session, notebook_id, key)
                 if cached is None:
                     async for step in pipeline.run(session, notebook_id, question, history, document_ids, timer, plan=plan):
                         if isinstance(step, pipeline.RetrievalResult):
@@ -186,7 +222,7 @@ async def chat(
         if cached is not None:
             yield _sse("token", {"text": cached.answer})
             trace = {**cached.trace, "cached": True} if cached.trace else None
-            saved = await _save_assistant(notebook_id, cached.answer, cached.sources, confidence=cached.confidence, trace=trace)
+            saved = await _save_assistant(notebook_id, thread_id, cached.answer, cached.sources, confidence=cached.confidence, trace=trace)
             log.info("chat answered from cache", extra={"notebook_id": str(notebook_id), "timings_ms": timer.timings_ms})
             yield _sse("done", {"message": saved.model_dump(mode="json")})
             return
@@ -196,7 +232,7 @@ async def chat(
         if not result.selected:
             text = NO_SELECTED_SOURCES_ANSWER if document_ids is not None else NO_SOURCES_ANSWER
             yield _sse("token", {"text": text})
-            saved = await _save_assistant(notebook_id, text, [])
+            saved = await _save_assistant(notebook_id, thread_id, text, [])
             yield _sse("done", {"message": saved.model_dump(mode="json")})
             return
 
@@ -206,7 +242,7 @@ async def chat(
         if result.abstain:
             yield _sse("token", {"text": ABSTAIN_ANSWER})
             saved = await _save_assistant(
-                notebook_id, ABSTAIN_ANSWER, _nearest_excerpts(result),
+                notebook_id, thread_id, ABSTAIN_ANSWER, _nearest_excerpts(result),
                 confidence=result.confidence, abstained=True, trace=pipeline.build_trace(result),
             )
             log.info("chat abstained", extra={"notebook_id": str(notebook_id), "top_score": result.top_score})
@@ -263,8 +299,8 @@ async def chat(
         trace = pipeline.build_trace(
             result, markers, usage, {m: v["support"] for m, v in verdicts.items()}, citation_coverage=coverage
         )
-        saved = await _save_assistant(notebook_id, answer, sources, confidence=result.confidence, trace=trace)
-        if key and sources and not degraded:  # only clean, cited answers are worth repeating
+        saved = await _save_assistant(notebook_id, thread_id, answer, sources, confidence=result.confidence, trace=trace)
+        if settings.ENABLE_ANSWER_CACHE and key and sources and not degraded:  # only clean, cited answers are worth repeating
             try:
                 async with AsyncSessionLocal() as session:
                     await answer_cache.store(session, notebook_id, key, answer, sources, result.confidence, trace)

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Document, Message, Notebook, StudySet, User
+from app.models import Document, Message, Note, Notebook, StudySet, Thread, User
 from app.security import SESSION_COOKIE, decode_token
 
 
@@ -77,3 +77,30 @@ async def get_owned_message(
     if message is None:
         raise HTTPException(status_code=404, detail="Message not found")
     return message
+
+
+async def _owned(db: AsyncSession, model, object_id: uuid.UUID, user: User, label: str):
+    """A notebook-scoped row owned by user, else 404 (existence isn't revealed)."""
+    result = await db.execute(
+        select(model).join(Notebook, model.notebook_id == Notebook.id).where(model.id == object_id, Notebook.user_id == user.id)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    return row
+
+
+async def get_owned_thread(
+    thread_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Thread:
+    return await _owned(db, Thread, thread_id, user, "Chat")
+
+
+async def get_owned_note(
+    note_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Note:
+    return await _owned(db, Note, note_id, user, "Note")

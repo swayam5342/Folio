@@ -75,6 +75,7 @@ class DocumentOut(ORMModel):
     risk_reasons: list[str] = Field(default_factory=list)
     pii_summary: dict[str, int] = Field(default_factory=dict)
     summary: str | None = None
+    suggested_questions: list[str] = Field(default_factory=list)
     summary_status: Literal["pending", "done", "failed"] | None = None
     indexed_at: datetime | None = None
     progress: dict | None = None  # {"stage", "done", "total"} while processing
@@ -113,6 +114,29 @@ class ChatRequest(BaseModel):
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
     # Restrict retrieval to these sources (null = every ready source in the notebook).
     document_ids: Annotated[list[uuid.UUID], Field(max_length=200)] | None = None
+    # The conversation to continue (null = the most recently used one, created if there's none).
+    thread_id: uuid.UUID | None = None
+    # Write a fresh answer instead of reusing a cached one (the "Regenerate" button).
+    regenerate: bool = False
+
+
+ThreadTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+
+
+class ThreadCreate(BaseModel):
+    title: ThreadTitle | None = None
+
+
+class ThreadUpdate(BaseModel):
+    title: ThreadTitle
+
+
+class ThreadOut(ORMModel):
+    id: uuid.UUID
+    notebook_id: uuid.UUID
+    title: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class SourceOut(BaseModel):
@@ -136,6 +160,7 @@ Confidence = Literal["high", "medium", "low"]
 
 class MessageOut(ORMModel):
     id: uuid.UUID
+    thread_id: uuid.UUID | None = None
     role: Literal["user", "assistant"]
     content: str
     sources: list[SourceOut] = Field(default_factory=list)
@@ -195,6 +220,39 @@ class TraceOut(BaseModel):
     tokens: dict[str, dict | None]
     citation_coverage: float | None = None
     cached: bool = False  # answered from the answer cache; the timings are the original answer's
+
+
+# --- Notes -----------------------------------------------------------------
+
+NoteTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+NoteContent = Annotated[str, StringConstraints(min_length=1, max_length=50_000)]
+
+
+class NoteCreate(BaseModel):
+    title: NoteTitle
+    content: NoteContent
+    sources: Annotated[list["SourceOut"], Field(max_length=100)] = Field(default_factory=list)
+
+
+class NoteUpdate(BaseModel):
+    title: NoteTitle | None = None
+    content: NoteContent | None = None
+
+    @model_validator(mode="after")
+    def _has_change(self):
+        if self.title is None and self.content is None:
+            raise ValueError("provide a title or content")
+        return self
+
+
+class NoteOut(ORMModel):
+    id: uuid.UUID
+    notebook_id: uuid.UUID
+    title: str
+    content: str
+    sources: list[SourceOut] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
 
 
 # --- Study sets -----------------------------------------------------------

@@ -55,6 +55,8 @@ class Notebook(Base):
     user = relationship("User", back_populates="notebooks")
     documents = relationship("Document", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
     messages = relationship("Message", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
+    threads = relationship("Thread", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
+    notes = relationship("Note", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
     study_sets = relationship("StudySet", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
 
     def touch(self) -> None:
@@ -85,6 +87,7 @@ class Document(Base):
     risk_reasons = Column(JSONB, nullable=False, default=list)
     pii_summary = Column(JSONB, nullable=False, default=dict)
     summary = Column(Text, nullable=True)  # short LLM overview, written after indexing
+    suggested_questions = Column(JSONB, nullable=False, default=list)  # written with the summary
     summary_status = Column(String(16), nullable=True)  # pending | done | failed; null = not attempted
     indexed_at = Column(DateTime(timezone=True), nullable=True)  # when the current chunks were stored
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -121,11 +124,41 @@ class Chunk(Base):
     document = relationship("Document", back_populates="chunks")
 
 
+class Thread(Base):
+    """One conversation in a notebook; a notebook can have several."""
+    __tablename__ = "threads"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    notebook_id = Column(UUID(as_uuid=True), ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(120), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    notebook = relationship("Notebook", back_populates="threads")
+    messages = relationship("Message", back_populates="thread", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class Note(Base):
+    """A saved answer (with its citations) or a note the user wrote."""
+    __tablename__ = "notes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    notebook_id = Column(UUID(as_uuid=True), ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)  # markdown; [[Cn]] markers index into sources
+    sources = Column(JSONB, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    notebook = relationship("Notebook", back_populates="notes")
+
+
 class Message(Base):
     __tablename__ = "messages"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     notebook_id = Column(UUID(as_uuid=True), ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    thread_id = Column(UUID(as_uuid=True), ForeignKey("threads.id", ondelete="CASCADE"), nullable=False, index=True)
     role = Column(Enum(MessageRole, native_enum=False, length=16), nullable=False)
     content = Column(Text, nullable=False)
     sources = Column(JSONB, nullable=False, default=list)
@@ -136,6 +169,7 @@ class Message(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="messages")
+    thread = relationship("Thread", back_populates="messages")
 
 
 class AnswerCache(Base):

@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.observability import RequestContextMiddleware, configure_logging
-from app.routers import auth, chat, documents, evaluation, notebooks, study
+from app.routers import auth, chat, documents, evaluation, notebooks, notes, study, threads
 from app.services import reranker, storage
 from app.services.embeddings import get_model
 from app.services.ingest import fail_interrupted_documents
@@ -41,6 +41,8 @@ app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(chat.messages_router, prefix="/api", tags=["chat"])
+app.include_router(threads.router, prefix="/api", tags=["chat"])
+app.include_router(notes.router, prefix="/api", tags=["notes"])
 app.include_router(study.router, prefix="/api", tags=["study"])
 app.include_router(evaluation.router, prefix="/api", tags=["evaluation"])
 

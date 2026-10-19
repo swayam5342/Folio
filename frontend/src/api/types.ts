@@ -33,6 +33,8 @@ export type SourceDocument = {
   pii_summary: Record<string, number>
   /** Short overview written after indexing; null until done (or when it failed). */
   summary: string | null
+  /** Questions this source answers, offered as starters in an empty chat. */
+  suggested_questions: string[]
   summary_status: 'pending' | 'done' | 'failed' | null
   /** When the current chunks (and viewer text) were stored. */
   indexed_at: string | null
@@ -77,8 +79,28 @@ export type Source = {
 
 export type Confidence = 'high' | 'medium' | 'low'
 
+export type ChatThread = {
+  id: string
+  notebook_id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+/** A saved answer (citations kept as [[Cn]] markers indexing into sources) or a written note. */
+export type Note = {
+  id: string
+  notebook_id: string
+  title: string
+  content: string
+  sources: Source[]
+  created_at: string
+  updated_at: string
+}
+
 export type Message = {
   id: string
+  thread_id?: string | null
   role: 'user' | 'assistant'
   content: string
   sources: Source[]
