@@ -1,9 +1,11 @@
 # Folio
 
-Folio is a NotebookLM-style app for asking questions about your own PDFs. You
-upload documents into a notebook, ask questions in a chat, and every claim in
-the answer is marked with a citation. Clicking a citation opens the PDF at the
-cited page with the supporting passage highlighted.
+Folio is a NotebookLM-style app for asking questions about your own documents:
+PDFs, Word files, PowerPoint decks, Markdown, text files and pasted text. You
+add sources to a notebook, ask questions in a chat, and every claim in the
+answer is marked with a citation. Clicking a citation opens the source at the
+cited page or slide (or, for Word and text sources, in a reader view) with the
+supporting passage highlighted.
 
 It is a full-stack retrieval-augmented generation (RAG) application: a FastAPI
 backend with Postgres/pgvector, a React frontend, and a free LLM (Groq), all
@@ -17,10 +19,19 @@ started with one `docker compose up`.
   notebooks, files and chats.
 - **Notebooks.** Create, rename and delete notebooks; each holds its own set of
   sources and its own chat.
-- **PDF sources.** Drag-and-drop upload (up to 50 MB each). Files are stored
-  and indexed in the background, with a live "processing → ready / failed"
-  status. Scanned pages with no text layer are read with OCR (RapidOCR, runs
-  locally and offline).
+- **Many kinds of source.** Drag-and-drop PDF, Word (`.docx`), PowerPoint
+  (`.pptx`), Markdown and text files (up to 50 MB each), or paste text with a
+  title. Files are stored and indexed in the background, with a live
+  "processing → ready / failed" status. Scanned PDF pages with no text layer
+  are read with OCR (RapidOCR, runs locally and offline). PowerPoint slides are
+  cited as "slide N" (speaker notes included); Word, Markdown and text sources
+  are cited by section and open in a reader view with the passage highlighted.
+- **Source summaries.** After indexing, each source gets a short overview
+  (one small Groq call), shown in the Sources panel and given to the model as
+  orientation for "summarize everything" questions.
+- **Tables kept whole.** Tables in PDFs, Word, PowerPoint and Markdown become
+  Markdown tables and are chunked on their own (large ones split by rows with
+  the header repeated), so answers can read rows and columns.
 - **Cited answers.** Answers stream in word by word. Folio measures valid
   citation coverage, refuses completely uncited generations and warns on
   partially uncited answers. Hovering a numbered citation shows the source snippet; clicking opens the
@@ -32,8 +43,15 @@ started with one `docker compose up`.
 - **Exact-term search.** Retrieval combines meaning-based vector search with
   keyword search, so course codes and function names find the right page.
 - **Smarter retrieval.** Follow-ups ("why is it slower?") are rewritten into
-  standalone questions, two paraphrases are searched alongside, and a local
-  cross-encoder reranks the candidates. Queries use BGE's asymmetric search
+  standalone questions and a local cross-encoder reranks the candidates. Each
+  chosen passage is given to the model with the chunks just before and after it
+  (same page and section), so it reads whole thoughts rather than cut-off
+  excerpts. Multi-query paraphrasing is available but off by default (it lowered
+  Hit@1 once reranking was on).
+- **Answer cache.** Asking the same question again over unchanged sources
+  returns the stored answer instantly (`ENABLE_ANSWER_CACHE`). Follow-ups are
+  matched on their rewritten, standalone form; adding, removing or re-indexing
+  a source invalidates old answers. Queries use BGE's asymmetric search
   instruction; summaries use a larger, source-balanced context while focused
   questions use a compact de-duplicated context.
 - **Section-aware chunks.** Headings and code blocks are detected from the
@@ -93,22 +111,30 @@ started with one `docker compose up`.
                                                              └──► Groq API (LLM)
 ```
 
-### Uploading a PDF
+### Adding a source
 
-1. The backend checks the file (PDF signature, size), saves it to disk, and
-   returns immediately with status `processing`.
-2. A background task extracts text page by page (PyMuPDF), OCRs any page
-   without a text layer (RapidOCR at 200 DPI) and labels each text block as a
-   heading, code or body text from its font (larger or bold-and-short →
-   heading, monospaced → code).
+1. The backend checks the file (type by extension, then content: PDF
+   signature and deep parse; Office files must be valid archives with no
+   macros and a capped uncompressed size; text must decode and contain no
+   binary data), saves it to disk, and returns immediately with status
+   `processing`. Pasted text arrives as JSON and is stored as a text file.
+2. A background task turns the source into pages of labelled blocks
+   (heading, body, code, table). PDFs: text page by page (PyMuPDF), OCR for
+   pages without a text layer (RapidOCR at 200 DPI), headings and code from
+   fonts, tables via PyMuPDF table detection. PowerPoint: one page per slide,
+   the title as heading. Word: heading styles, paragraphs and tables in order.
+   Markdown: `#` headings, fenced code, pipe tables. Normalisation and optional
+   PII masking run on these blocks *before* chunking, so chunk offsets, the
+   stored reader text and the highlights always agree.
 3. Structure-aware chunking (`CHUNK_STRATEGY=structured`): a heading starts a
    section; paragraphs are packed into chunks of up to ~800 characters without
    being cut; code blocks stay whole; only an over-long paragraph falls back to
    an overlapping window. Chunks never cross pages and record their page,
    section title and character offsets. Each chunk is embedded together with
    its section title (`BAAI/bge-small-en-v1.5`, running locally).
-4. Chunks and their 384-dimension vectors are stored in Postgres; the document
-   becomes `ready`. `POST /api/documents/{id}/reindex` (or
+4. Chunks and their 384-dimension vectors are stored in Postgres (and, for
+   non-PDF sources, the page text the reader view shows); the document
+   becomes `ready` and its summary is written in the background. `POST /api/documents/{id}/reindex` (or
    `python -m app.reindex`) re-chunks existing documents after the strategy
    changes.
 
@@ -315,7 +341,7 @@ All settings come from `.env` (see `.env.example`).
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | Chat model on Groq. |
 | `POSTGRES_PASSWORD` | `ragpass` | Database password used by Docker Compose. |
 | `DATABASE_URL` | localhost | Database URL when running the backend outside Docker. |
-| `MAX_UPLOAD_MB` | `50` | Largest accepted PDF. |
+| `MAX_UPLOAD_MB` | `50` | Largest accepted file (or pasted text). |
 | `MAX_PDF_PAGES` | `1000` | Maximum pages accepted after parsing. |
 | `COOKIE_SECURE` | `false` | Set `true` when serving over HTTPS. |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `BAAI/bge-small-en-v1.5` / `384` | Local embedding model. |
@@ -328,14 +354,14 @@ All settings come from `.env` (see `.env.example`).
 | `RETRIEVE_K` | `30` | Candidates per search, and how many the reranker scores. |
 | `QUERY_VARIANTS` | `2` | Paraphrases searched alongside the question. |
 | `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L6-v2` | Local cross-encoder (`BAAI/bge-reranker-base` is more accurate, ~10× slower). |
-| `CONFIDENCE_HIGH` / `CONFIDENCE_LOW` | `0.5` / `0.05` | Reranker score (0-1) for high confidence / below which (with low similarity) the answer abstains. |
-| `SIMILARITY_HIGH` / `SIMILARITY_LOW` | `0.75` / `0.55` | Embedding-similarity thresholds for the same gate. |
+| `CONFIDENCE_HIGH` / `CONFIDENCE_LOW` | `0.5` / `0.01` | Reranker score (0-1) for high confidence / below which (with low similarity) the answer abstains. |
+| `SIMILARITY_HIGH` / `SIMILARITY_LOW` | `0.75` / `0.60` | Embedding-similarity thresholds for the same gate (tuned on the eval set: no answerable question refused). |
 | `HISTORY_MESSAGES` | `6` | Previous messages sent for follow-up context. |
 | `LOG_LEVEL` | `INFO` | Log level. |
 | `LOG_FORMAT` | `json` | `json` (one object per line) or `text` (readable, for development). |
 | `ENABLE_HYBRID_SEARCH` | `true` | `false` = vector search only, the evaluation baseline. |
 | `ENABLE_QUERY_REWRITE` | `true` | Rewrite follow-ups into standalone questions. |
-| `ENABLE_MULTI_QUERY` | `true` | Also search `QUERY_VARIANTS` paraphrases. |
+| `ENABLE_MULTI_QUERY` | `false` | Also search `QUERY_VARIANTS` paraphrases (off: it lowered Hit@1 with reranking on). |
 | `ENABLE_HYDE` | `false` | Also search with a hypothetical answer (costs extra tokens). |
 | `ENABLE_RERANKER` | `true` | Cross-encoder reranking. |
 | `ENABLE_ABSTENTION` | `true` | Say "not in your sources" on low confidence instead of answering. |
@@ -343,6 +369,9 @@ All settings come from `.env` (see `.env.example`).
 | `MIN_CITATION_COVERAGE` | `0.8` | Minimum fraction of substantive claims with a valid citation before warning. |
 | `ENABLE_PROMPT_INJECTION_SCAN` | `true` | Quarantine high-risk instructions embedded in source text. |
 | `ENABLE_PII_REDACTION` | `true` | Enable per-notebook masking while indexing. |
+| `ENABLE_NEIGHBOR_EXPANSION` | `true` | Give the model the chunks around each chosen passage (same page and section). |
+| `ENABLE_ANSWER_CACHE` | `true` | Reuse stored answers for repeat questions over unchanged sources (always off in the eval harness). |
+| `ENABLE_SOURCE_SUMMARIES` | `true` | Write a short summary of each source after indexing (one Groq call per source). |
 | `EVAL_RESULTS_PATH` | `backend/eval/results/latest.json` | Results file served to the Evaluation page. |
 
 ## API
@@ -360,9 +389,11 @@ matches the `request_id` in the server logs.
 | `GET` | `/auth/me` | Current user |
 | `GET` `POST` | `/notebooks` | List / create notebooks |
 | `GET` `PATCH` `DELETE` | `/notebooks/{id}` | Get / rename / delete a notebook |
-| `GET` `POST` | `/notebooks/{id}/documents` | List / upload PDFs |
-| `GET` `DELETE` | `/documents/{id}` | Document status / delete |
-| `GET` | `/documents/{id}/file` | Download the PDF |
+| `GET` `POST` | `/notebooks/{id}/documents` | List / upload sources (`.pdf`, `.docx`, `.pptx`, `.md`, `.txt`) |
+| `POST` | `/notebooks/{id}/documents/text` | Add pasted text (`{"title", "text"}`) as a source |
+| `GET` `DELETE` | `/documents/{id}` | Document status (incl. `kind`, `summary`) / delete |
+| `GET` | `/documents/{id}/file` | The original file (PDFs inline, others as a download) |
+| `GET` | `/documents/{id}/pages` | Page text of a non-PDF source with block offsets, for the reader view |
 | `POST` | `/documents/{id}/reindex` | Re-chunk and re-embed with the current `CHUNK_STRATEGY` (`409` while processing) |
 | `GET` `DELETE` | `/notebooks/{id}/messages` | Chat history / clear chat |
 | `POST` | `/notebooks/{id}/chat` | Ask a question (`{"question", "document_ids"?}`); streams `stage` and `token` events, then `done` or `error` |
@@ -388,8 +419,11 @@ backend/                   FastAPI backend (Python, managed with uv)
     deps.py                current user + ownership checks
     routers/               auth, notebooks, documents, chat
     services/
-      ingest.py            background PDF processing
-      pdf_parser.py        PDF → text per page, blocks labelled heading/code/body
+      ingest.py            background processing: extract → sanitize → chunk → embed
+      extractors.py        every source kind → pages of blocks; upload validation
+      pdf_parser.py        PDF → text per page, blocks labelled heading/code/body/table
+      summaries.py         per-source summary after indexing
+      answer_cache.py      stored answers for repeat questions
       chunking.py          structured (section-aware) or fixed-window chunks
       embeddings.py        local sentence-transformers model
       query_planner.py     query rewrite, multi-query, HyDE (one LLM call)
@@ -399,7 +433,7 @@ backend/                   FastAPI backend (Python, managed with uv)
       ocr.py               OCR for pages without a text layer
       study.py             quiz and flashcard generation
       llm.py               prompt, Groq streaming, citation parsing
-      storage.py           PDF files on disk
+      storage.py           uploaded files (and reader text) on disk
   eval/                    evaluation harness
     samples.py             sample-corpus content (one HTML fragment per PDF page)
     build_samples.py       renders it to docs/samples/*.pdf
@@ -485,10 +519,14 @@ durable queues and per-user quotas, rotate secrets, and monitor abuse.
   and cached).
 - Heading detection relies on font size and weight, so PDFs that style
   headings like body text are chunked by paragraph without section titles.
-  Tables are kept together only when the PDF stores them as one text block.
-- The confidence gate refuses only clearly off-topic questions (2 of 7 in the
-  evaluation); the model handles the rest. The thresholds are cautious
-  defaults chosen so that no answerable question was refused.
+  PDF table detection needs ruled (bordered) tables; borderless tables stay as
+  text.
+- Word and PowerPoint sources open in a text reader, not their original
+  layout (no slide designs or images). `.doc`/`.ppt` and macro-enabled files
+  aren't accepted; web links aren't supported yet.
+- The confidence gate refuses only clearly off-topic questions (4 of 7 in the
+  evaluation); the model handles the rest. The thresholds were tuned so that
+  no answerable question was refused, with a small margin on this small set.
 - Reranking runs on the CPU and is the slowest local step (about 5 s for 30
   passages on a busy laptop). `RETRIEVE_K` trades recall for speed.
 - The evaluation corpus is small (50 questions, 20 pages), so a single
