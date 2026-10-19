@@ -98,7 +98,7 @@ export default function ThreadBar({
                 {...props}
                 disabled={busy}
                 title={thread?.title}
-                className="inline-flex h-8 min-w-0 max-w-[14rem] items-center gap-1 rounded-md px-2 text-sm text-muted transition-colors hover:bg-sunken hover:text-ink disabled:opacity-50"
+                className="inline-flex h-8 min-w-0 max-w-[6.5rem] items-center gap-1 rounded-md px-1.5 text-sm text-muted transition-colors hover:bg-sunken hover:text-ink disabled:opacity-50 @lg:max-w-[14rem] @lg:px-2"
               >
                 <span className="truncate">{thread?.title ?? 'Chats'}</span>
                 <ChevronDown aria-hidden size={14} className="shrink-0" />

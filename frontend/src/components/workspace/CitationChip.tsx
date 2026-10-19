@@ -123,7 +123,7 @@ export function CitationChip({
                 </span>
               </span>
             )}
-            <span className="mt-2.5 block text-xs text-faint">Click to open the page</span>
+            <span className="mt-2.5 block text-xs text-faint">{source.document_kind === 'pptx' ? 'Click to open the slide' : isPaged(source) ? 'Click to open the page' : 'Click to open the passage'}</span>
           </motion.div>
         </HoverCard.Content>
       </HoverCard.Portal>

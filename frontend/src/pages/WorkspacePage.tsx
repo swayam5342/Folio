@@ -200,7 +200,7 @@ function Workspace({ notebookId }: { notebookId: string }) {
               id="sources"
               panelRef={sourcesRef}
               defaultSize="22%"
-              minSize="15%"
+              minSize="250px"
               maxSize="35%"
               collapsible
               collapsedSize="0%"
@@ -209,7 +209,7 @@ function Workspace({ notebookId }: { notebookId: string }) {
               <aside className="h-full border-r border-line">{sources}</aside>
             </Panel>
             <Separator className="pane-handle" />
-            <Panel id="center" minSize="30%">
+            <Panel id="center" minSize="360px">
               <main className="h-full min-w-0">{centerPane}</main>
             </Panel>
             <Separator className="pane-handle" />

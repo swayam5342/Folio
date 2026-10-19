@@ -351,7 +351,7 @@ export default function ChatPanel({
 
   return (
     <section aria-label="Chat" className="flex h-full min-h-0 flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4 sm:px-6">
+      <div className="@container flex h-12 shrink-0 items-center justify-between gap-2 border-b border-line px-3 sm:px-6">
         {switcher}
         <ThreadBar
           notebookId={notebookId}
