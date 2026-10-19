@@ -1,5 +1,6 @@
 """
-Generates quizzes and flashcard decks from a notebook's sources.
+Generates quizzes, flashcard decks and "studio" documents (study guide, FAQ,
+timeline, glossary) from a notebook's sources.
 
 Everything sent to the model has to fit Groq's free tier (8,000 tokens per
 minute), so a set is written from a bounded selection of excerpts rather than
@@ -24,8 +25,31 @@ from app.services.retrieval import similarity_search
 MAX_EXCERPTS = 18
 # Excerpt budgets keep one generation under the free tier's 8,000 tokens/minute.
 # Quizzes get less source text because they use more reasoning (to get the answer key right).
-EXCERPT_CHARS = {StudyKind.quiz: 12_000, StudyKind.flashcards: 16_000}
-REASONING = {StudyKind.quiz: "medium", StudyKind.flashcards: "low"}
+EXCERPT_CHARS = {
+    StudyKind.quiz: 12_000,
+    StudyKind.flashcards: 16_000,
+    StudyKind.study_guide: 16_000,
+    StudyKind.faq: 14_000,
+    StudyKind.timeline: 16_000,
+    StudyKind.glossary: 16_000,
+}
+REASONING = {StudyKind.quiz: "medium"}  # everything else: "low"
+NOUNS = {
+    StudyKind.quiz: "Quiz",
+    StudyKind.flashcards: "Flashcards",
+    StudyKind.study_guide: "Study guide",
+    StudyKind.faq: "FAQ",
+    StudyKind.timeline: "Timeline",
+    StudyKind.glossary: "Glossary",
+}
+DIFFICULTY = {
+    "easy": "Make the questions easy: direct recall of clearly stated facts and definitions.",
+    "medium": "Mix recall questions with some that need understanding of how ideas connect.",
+    "hard": (
+        "Make the questions hard: application, comparison and multi-step reasoning, with distractors "
+        "that a student who only skimmed would find convincing - but still answerable from one excerpt."
+    ),
+}
 
 SYSTEM_PROMPT = """You write study material for a student, strictly from the source excerpts provided.
 
@@ -48,6 +72,54 @@ FLASHCARD_SHAPE = """{"title": "<short title for this deck, max 8 words>",
  "items": [{"front": "<a term or a short question>",
             "back": "<the answer, at most two sentences>",
             "cite": "C<n>"}]}"""
+
+
+STUDY_GUIDE_SHAPE = """{"title": "<short title for this study guide, max 8 words>",
+ "items": [{"heading": "<topic heading>",
+            "body": "<3-5 sentences explaining the topic for revision>",
+            "cite": "C<n>"}]}"""
+
+FAQ_SHAPE = """{"title": "<short title for this FAQ, max 8 words>",
+ "items": [{"question": "<a question a student would ask>",
+            "answer": "<the answer, 1-3 sentences>",
+            "cite": "C<n>"}]}"""
+
+TIMELINE_SHAPE = """{"title": "<short title for this timeline, max 8 words>",
+ "items": [{"when": "<date, year, period or step number exactly as the excerpt gives it>",
+            "event": "<what happened, one sentence>",
+            "cite": "C<n>"}]}"""
+
+GLOSSARY_SHAPE = """{"title": "<short title for this glossary, max 8 words>",
+ "items": [{"term": "<term>",
+            "definition": "<definition in one or two sentences>",
+            "cite": "C<n>"}]}"""
+
+# Per studio kind: (task instruction, JSON shape, the item's text fields).
+STUDIO = {
+    StudyKind.study_guide: (
+        "Write a study guide of exactly {count} sections covering the most important topics, in a sensible "
+        "learning order. Each section explains one topic from one excerpt.",
+        STUDY_GUIDE_SHAPE,
+        ("heading", "body"),
+    ),
+    StudyKind.faq: (
+        "Write exactly {count} frequently asked questions with answers, covering what a student is most likely "
+        "to ask about this material.",
+        FAQ_SHAPE,
+        ("question", "answer"),
+    ),
+    StudyKind.timeline: (
+        "Write a timeline of up to {count} events or steps, in chronological (or procedural) order. Only include "
+        "events whose date, period or order the excerpt actually states; if there are fewer, return fewer.",
+        TIMELINE_SHAPE,
+        ("when", "event"),
+    ),
+    StudyKind.glossary: (
+        "Write a glossary of exactly {count} key terms with clear definitions, as the excerpts define or use them.",
+        GLOSSARY_SHAPE,
+        ("term", "definition"),
+    ),
+}
 
 
 # A label the model leaked into student-facing text, e.g. "C4 states that", "excerpt C2", "[[C3]]".
@@ -146,10 +218,14 @@ async def select_excerpts(
     return selected
 
 
-def _build_messages(kind: StudyKind, count: int, topic: str | None, context: str) -> list[dict]:
-    if kind == StudyKind.quiz:
+def _build_messages(kind: StudyKind, count: int, topic: str | None, context: str, difficulty: str = "medium") -> list[dict]:
+    if kind in STUDIO:
+        template, shape, _ = STUDIO[kind]
+        task = template.format(count=count)
+    elif kind == StudyKind.quiz:
         task = (
-            f"Write exactly {count} multiple-choice questions. Each has exactly 4 options with one correct answer; "
+            f"Write exactly {count} multiple-choice questions. {DIFFICULTY.get(difficulty, DIFFICULTY['medium'])} "
+            "Each has exactly 4 options with one correct answer; "
             "wrong options must be plausible but clearly wrong according to the excerpt. "
             "Ask positive questions only: never 'which is NOT', 'EXCEPT' or 'which is false'. "
             "No 'all of the above' or 'none of the above'. "
@@ -175,6 +251,8 @@ def _validate(raw: str, kind: StudyKind, citation_map: dict) -> tuple[str, list[
     data = json.loads(raw)
     if not isinstance(data, dict):
         raise ValueError("expected a JSON object")
+    if kind in STUDIO:
+        return _validate_studio(data, kind, citation_map)
     model = _QuizItem if kind == StudyKind.quiz else _FlashcardItem
     items = []
     for candidate in data.get("items") or []:
@@ -202,6 +280,24 @@ def _validate(raw: str, kind: StudyKind, citation_map: dict) -> tuple[str, list[
     return title, items
 
 
+def _validate_studio(data: dict, kind: StudyKind, citation_map: dict) -> tuple[str, list[dict]]:
+    """Studio items: each text field non-blank (and scrubbed of excerpt labels), citing a real excerpt."""
+    _, _, fields = STUDIO[kind]
+    items = []
+    for candidate in data.get("items") or []:
+        if not isinstance(candidate, dict):
+            continue
+        values = {f: str(candidate.get(f) or "").strip() for f in fields}
+        source = citation_map.get(str(candidate.get("cite") or "").strip("[] "))
+        if source is None or not all(values.values()):
+            continue
+        items.append({**{f: _scrub(v) for f, v in values.items()}, "source": source})
+    if kind == StudyKind.glossary:
+        items.sort(key=lambda item: item["term"].casefold())
+    title = str(data.get("title") or "").strip()[:120]
+    return title, items
+
+
 async def generate(
     db: AsyncSession,
     notebook_id: uuid.UUID,
@@ -209,26 +305,31 @@ async def generate(
     count: int,
     topic: str | None,
     document_ids: list[uuid.UUID],
+    difficulty: str = "medium",
 ) -> tuple[str, list[dict]]:
     """Returns (title, items). Raises llm.LLMError / llm.RateLimited, or GenerationFailed."""
     excerpts = await select_excerpts(db, notebook_id, document_ids, topic, EXCERPT_CHARS[kind])
     if not excerpts:
         raise GenerationFailed("The selected sources have no text to study from.")
     context, citation_map = llm.build_context(excerpts)
-    messages = _build_messages(kind, count, topic, context)
+    messages = _build_messages(kind, count, topic, context, difficulty)
 
     title, items = "", []
     for attempt in range(2):  # one retry if the JSON is broken
         try:
-            raw = await llm.complete_json(messages, reasoning_effort=REASONING[kind])
+            raw = await llm.complete_json(messages, reasoning_effort=REASONING.get(kind, "low"))
             title, items = _validate(raw, kind, citation_map)
             break
         except (llm.InvalidJSON, json.JSONDecodeError, ValueError) as exc:
             if attempt == 1:
                 raise GenerationFailed("Couldn't generate a good set — try again.") from exc
 
-    if len(items) < (count + 1) // 2:
+    # A timeline may legitimately be short (few dated events); everything else needs half the items.
+    minimum = 3 if kind == StudyKind.timeline else (count + 1) // 2
+    if len(items) < minimum:
+        if kind == StudyKind.timeline:
+            raise GenerationFailed("These sources don't have enough dated or ordered events for a timeline.")
         raise GenerationFailed("Couldn't generate a good set — try again.")
-    noun = "Quiz" if kind == StudyKind.quiz else "Flashcards"
+    noun = NOUNS[kind]
     default_title = f"{noun}: {topic}" if topic else noun
     return title or default_title[:120], items[:count]

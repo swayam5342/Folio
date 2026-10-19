@@ -29,6 +29,11 @@ class MessageRole(str, enum.Enum):
 class StudyKind(str, enum.Enum):
     quiz = "quiz"
     flashcards = "flashcards"
+    # "Studio" outputs: written documents built from the sources, every item cited.
+    study_guide = "study_guide"
+    faq = "faq"
+    timeline = "timeline"
+    glossary = "glossary"
 
 
 class User(Base):
@@ -197,6 +202,7 @@ class StudySet(Base):
     document_ids = Column(JSONB, nullable=False, default=list)
     items = Column(JSONB, nullable=False, default=list)
     last_score = Column(Integer, nullable=True)
+    difficulty = Column(String(8), nullable=True)  # quizzes: easy | medium | hard
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="study_sets")

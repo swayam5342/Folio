@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 
 import { ApiError } from '../../api/client'
 import { useCreateStudySet, useDeleteStudySet, useDocuments, useStudySet, useStudySets } from '../../api/queries'
-import type { Source, StudyKind, StudySetSummary } from '../../api/types'
+import type { QuizDifficulty, Source, StudyKind, StudySetSummary } from '../../api/types'
 import { relativeTime } from '../../lib/format'
 import { useWorkspace } from '../../lib/workspace'
 import { AlertIcon, MoreIcon } from '../ui/icons'
@@ -10,15 +10,31 @@ import { useConfirm, useToast } from '../ui/overlay'
 import { Button, IconButton, Menu, Spinner, cx } from '../ui/primitives'
 import FlashcardPlayer from './FlashcardPlayer'
 import QuizPlayer from './QuizPlayer'
+import StudioView from './StudioView'
 
 type View = { mode: 'list' } | { mode: 'new'; kind: StudyKind; topic?: string; nonce?: number } | { mode: 'open'; id: string }
 
-const COUNTS: Record<StudyKind, number[]> = { quiz: [5, 10, 15], flashcards: [10, 20, 30] }
-const DEFAULT_COUNT: Record<StudyKind, number> = { quiz: 10, flashcards: 20 }
+// Keep in step with STUDY_COUNTS in backend/app/schemas.py.
+const COUNTS: Record<StudyKind, number[]> = {
+  quiz: [5, 10, 15],
+  flashcards: [10, 20, 30],
+  study_guide: [4, 6, 8],
+  faq: [5, 8, 12],
+  timeline: [6, 10, 15],
+  glossary: [8, 12, 20],
+}
+const DEFAULT_COUNT: Record<StudyKind, number> = { quiz: 10, flashcards: 20, study_guide: 6, faq: 8, timeline: 10, glossary: 12 }
 const LABEL: Record<StudyKind, { one: string; many: string; item: string }> = {
   quiz: { one: 'quiz', many: 'Quiz', item: 'question' },
   flashcards: { one: 'flashcard deck', many: 'Flashcards', item: 'card' },
+  study_guide: { one: 'study guide', many: 'Study guide', item: 'section' },
+  faq: { one: 'FAQ', many: 'FAQ', item: 'question' },
+  timeline: { one: 'timeline', many: 'Timeline', item: 'event' },
+  glossary: { one: 'glossary', many: 'Glossary', item: 'term' },
 }
+const PRACTICE: StudyKind[] = ['quiz', 'flashcards']
+const STUDIO: StudyKind[] = ['study_guide', 'faq', 'timeline', 'glossary']
+const DIFFICULTIES: QuizDifficulty[] = ['easy', 'medium', 'hard']
 
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? '' : 's'}`
@@ -44,6 +60,7 @@ function GenerateForm({
   const [selected, setSelected] = useState<string[] | null>(null) // null = all ready sources
   const [topic, setTopic] = useState(initialTopic ?? '')
   const [count, setCount] = useState(DEFAULT_COUNT[kind])
+  const [difficulty, setDifficulty] = useState<QuizDifficulty>('medium')
   const [wait, setWait] = useState(0)
 
   const chosen = selected ?? ready.map((d) => d.id)
@@ -62,6 +79,7 @@ function GenerateForm({
       {
         kind,
         count,
+        ...(kind === 'quiz' ? { difficulty } : {}),
         topic: topic.trim() || undefined,
         document_ids: selected === null ? undefined : chosen,
       },
@@ -82,7 +100,7 @@ function GenerateForm({
           Writing {plural(count, LABEL[kind].item)} from {plural(chosen.length, 'source')}…
         </p>
         <p className="mt-1 text-sm text-muted">
-          This usually takes {kind === 'quiz' ? '5–15' : '3–10'} seconds. Every {LABEL[kind].item} will cite its page.
+          This usually takes {kind === 'quiz' ? '5–15' : '3–10'} seconds. Every {LABEL[kind].item} will cite its source.
         </p>
       </div>
     )
@@ -107,7 +125,9 @@ function GenerateForm({
                   className="size-4 accent-[var(--ink)]"
                 />
                 <span className="truncate">{doc.filename}</span>
-                <span className="shrink-0 text-faint">{plural(doc.page_count, 'page')}</span>
+                {(doc.kind === 'pdf' || doc.kind === 'pptx') && (
+                  <span className="shrink-0 text-faint">{plural(doc.page_count, doc.kind === 'pptx' ? 'slide' : 'page')}</span>
+                )}
               </label>
             ))}
           </div>
@@ -149,6 +169,28 @@ function GenerateForm({
         </div>
       </fieldset>
 
+      {kind === 'quiz' && (
+        <fieldset className="mt-6">
+          <legend className="text-sm font-medium">Difficulty</legend>
+          <div className="mt-2 inline-flex rounded-md border border-line-strong p-0.5">
+            {DIFFICULTIES.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDifficulty(d)}
+                aria-pressed={difficulty === d}
+                className={cx(
+                  'h-8 min-w-16 rounded px-3 text-sm font-medium capitalize',
+                  difficulty === d ? 'bg-ink text-paper' : 'text-muted hover:text-ink',
+                )}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       {error && (
         <div role="alert" className="mt-6 flex items-start gap-2.5 rounded-md bg-danger-soft px-3.5 py-3 text-sm">
           <AlertIcon size={16} className="mt-0.5 shrink-0 text-danger" />
@@ -173,8 +215,9 @@ function StudySetRow({ set, onOpen, onDelete }: { set: StudySetSummary; onOpen: 
     <li className="group relative rounded-lg border border-line bg-surface transition-colors hover:border-line-strong">
       <button type="button" onClick={onOpen} className="block w-full rounded-lg p-4 pr-12 text-left">
         <span className="flex items-center gap-2 text-xs font-medium text-muted">
-          <span className={cx('rounded px-1.5 py-0.5', set.kind === 'quiz' ? 'bg-sunken' : 'hl-mark')}>
+          <span className={cx('rounded px-1.5 py-0.5', set.kind === 'flashcards' ? 'hl-mark' : 'bg-sunken')}>
             {LABEL[set.kind].many}
+            {set.difficulty && set.difficulty !== 'medium' && ` · ${set.difficulty}`}
           </span>
           <span>{plural(set.item_count, LABEL[set.kind].item)}</span>
           <span aria-hidden="true">·</span>
@@ -219,11 +262,9 @@ function OpenSet({ id, onOpenSource, onBack }: { id: string; onOpenSource: (s: S
         </Button>
       </div>
     )
-  return set.data.kind === 'quiz' ? (
-    <QuizPlayer set={set.data} onOpenSource={onOpenSource} onBack={onBack} />
-  ) : (
-    <FlashcardPlayer set={set.data} onOpenSource={onOpenSource} onBack={onBack} />
-  )
+  if (set.data.kind === 'quiz') return <QuizPlayer set={set.data} onOpenSource={onOpenSource} onBack={onBack} />
+  if (set.data.kind === 'flashcards') return <FlashcardPlayer set={set.data} onOpenSource={onOpenSource} onBack={onBack} />
+  return <StudioView set={set.data} onOpenSource={onOpenSource} onBack={onBack} />
 }
 
 export default function StudyPanel({
@@ -264,14 +305,17 @@ export default function StudyPanel({
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-line px-4 sm:px-6">
         {switcher}
         {view.mode === 'list' && (sets.data?.length ?? 0) > 0 && (
-          <div className="flex gap-1.5">
-            <Button className="h-8 px-2.5" onClick={() => setView({ mode: 'new', kind: 'quiz' })}>
-              New quiz
-            </Button>
-            <Button className="h-8 px-2.5" onClick={() => setView({ mode: 'new', kind: 'flashcards' })}>
-              New flashcards
-            </Button>
-          </div>
+          <Menu
+            trigger={(props) => (
+              <Button className="h-8 px-2.5" {...props}>
+                Create…
+              </Button>
+            )}
+            items={[...PRACTICE, ...STUDIO].map((k) => ({
+              label: `New ${LABEL[k].one}`,
+              onSelect: () => setView({ mode: 'new', kind: k }),
+            }))}
+          />
         )}
       </div>
 
@@ -295,16 +339,25 @@ export default function StudyPanel({
           <p className="p-8 text-danger">{sets.error.message}</p>
         ) : sets.data.length === 0 ? (
           <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-            <h3 className="font-serif text-2xl font-semibold tracking-tight">Test yourself on your sources</h3>
+            <h3 className="font-serif text-2xl font-semibold tracking-tight">Study from your sources</h3>
             <p className="mt-2 max-w-md text-muted">
-              Generate a multiple-choice quiz or a deck of flashcards from this notebook. Every question and card links to
-              the page it came from, and sets are saved here so you can come back to them.
+              Test yourself with a quiz or flashcards, or have Folio write a study guide, FAQ, timeline or glossary. Every
+              item links to the passage it came from, and everything is saved here so you can come back to it.
             </p>
-            <div className="mt-6 flex flex-wrap gap-2">
+            <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-faint">Practice</p>
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button variant="primary" onClick={() => setView({ mode: 'new', kind: 'quiz' })}>
                 New quiz
               </Button>
               <Button onClick={() => setView({ mode: 'new', kind: 'flashcards' })}>New flashcards</Button>
+            </div>
+            <p className="mt-5 text-xs font-semibold uppercase tracking-wider text-faint">Studio</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {STUDIO.map((k) => (
+                <Button key={k} onClick={() => setView({ mode: 'new', kind: k })}>
+                  {LABEL[k].many}
+                </Button>
+              ))}
             </div>
           </div>
         ) : (

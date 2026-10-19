@@ -257,13 +257,21 @@ class NoteOut(ORMModel):
 
 # --- Study sets -----------------------------------------------------------
 
-QUIZ_COUNTS = (5, 10, 15)
-FLASHCARD_COUNTS = (10, 20, 30)
+StudyKindName = Literal["quiz", "flashcards", "study_guide", "faq", "timeline", "glossary"]
+STUDY_COUNTS: dict[str, tuple[int, ...]] = {
+    "quiz": (5, 10, 15),
+    "flashcards": (10, 20, 30),
+    "study_guide": (4, 6, 8),
+    "faq": (5, 8, 12),
+    "timeline": (6, 10, 15),
+    "glossary": (8, 12, 20),
+}
 
 
 class StudySetCreate(BaseModel):
-    kind: Literal["quiz", "flashcards"]
+    kind: StudyKindName
     count: int
+    difficulty: Literal["easy", "medium", "hard"] = "medium"  # quizzes only
     topic: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
     document_ids: list[uuid.UUID] | None = None
 
@@ -274,7 +282,7 @@ class StudySetCreate(BaseModel):
 
     @model_validator(mode="after")
     def _count_for_kind(self):
-        allowed = QUIZ_COUNTS if self.kind == "quiz" else FLASHCARD_COUNTS
+        allowed = STUDY_COUNTS[self.kind]
         if self.count not in allowed:
             raise ValueError(f"count must be one of {', '.join(map(str, allowed))} for {self.kind}")
         return self
@@ -283,7 +291,8 @@ class StudySetCreate(BaseModel):
 class StudySetSummary(ORMModel):
     id: uuid.UUID
     notebook_id: uuid.UUID
-    kind: Literal["quiz", "flashcards"]
+    kind: StudyKindName
+    difficulty: str | None = None
     title: str
     topic: str | None
     item_count: int

@@ -192,7 +192,10 @@ export type ViewerTarget = {
   nonce: number
 }
 
-export type StudyKind = 'quiz' | 'flashcards'
+/** Quizzes and flashcards are practised; the "studio" kinds are cited documents to read. */
+export type StudyKind = 'quiz' | 'flashcards' | 'study_guide' | 'faq' | 'timeline' | 'glossary'
+export type StudioKind = Exclude<StudyKind, 'quiz' | 'flashcards'>
+export type QuizDifficulty = 'easy' | 'medium' | 'hard'
 
 export type QuizItem = {
   question: string
@@ -208,10 +211,18 @@ export type FlashcardItem = {
   source: Source
 }
 
+export type StudyGuideItem = { heading: string; body: string; source: Source }
+export type FaqItem = { question: string; answer: string; source: Source }
+export type TimelineItem = { when: string; event: string; source: Source }
+export type GlossaryItem = { term: string; definition: string; source: Source }
+export type StudioItem = StudyGuideItem | FaqItem | TimelineItem | GlossaryItem
+
 export type StudySetSummary = {
   id: string
   notebook_id: string
   kind: StudyKind
+  /** Quizzes only. */
+  difficulty?: QuizDifficulty | null
   title: string
   topic: string | null
   item_count: number
@@ -221,12 +232,13 @@ export type StudySetSummary = {
 
 export type StudySet = StudySetSummary & {
   document_ids: string[]
-  items: QuizItem[] | FlashcardItem[]
+  items: QuizItem[] | FlashcardItem[] | StudioItem[]
 }
 
 export type StudySetCreate = {
   kind: StudyKind
   count: number
+  difficulty?: QuizDifficulty
   topic?: string
   document_ids?: string[]
 }
