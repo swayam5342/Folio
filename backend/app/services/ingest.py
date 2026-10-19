@@ -11,7 +11,7 @@ from sqlalchemy import delete, update
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Chunk, Document, DocumentStatus, Notebook, utcnow
-from app.services import content_security, extractors, storage
+from app.services import content_security, extractors, storage, summaries
 from app.services.chunking import assemble_pages, chunk_document, embedding_text
 from app.services.embeddings import embed_texts
 
@@ -116,6 +116,22 @@ async def process_document(document_id: uuid.UUID) -> None:
         document.status = DocumentStatus.ready
         document.error = None
         document.indexed_at = utcnow()
+        document.summary = None
+        document.summary_status = "pending" if settings.ENABLE_SOURCE_SUMMARIES else None
+        await db.commit()
+
+    # After the commit: the source is already searchable while its summary is written.
+    if settings.ENABLE_SOURCE_SUMMARIES:
+        try:
+            await summaries.generate(document_id)
+        except Exception:
+            log.exception("Summary for document %s failed", document_id)
+            await _set_summary_failed(document_id)
+
+
+async def _set_summary_failed(document_id: uuid.UUID) -> None:
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(Document).where(Document.id == document_id).values(summary_status="failed"))
         await db.commit()
 
 
@@ -137,5 +153,7 @@ async def fail_interrupted_documents() -> int:
             .where(Document.status == DocumentStatus.processing)
             .values(status=DocumentStatus.failed, error=INTERRUPTED_ERROR)
         )
+        # A summary that was being written when the server stopped will never finish.
+        await db.execute(update(Document).where(Document.summary_status == "pending").values(summary_status="failed"))
         await db.commit()
         return result.rowcount

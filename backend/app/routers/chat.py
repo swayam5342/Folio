@@ -12,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import AsyncSessionLocal, get_db
 from app.deps import get_owned_message, get_owned_notebook
-from app.models import Message, MessageRole, Notebook
+from app.models import AnswerCache, Document, DocumentStatus, Message, MessageRole, Notebook
 from app.observability import StageTimer
 from app.schemas import ChatRequest, MessageOut, TraceOut
-from app.services import citation_check, llm, pipeline
+from app.services import answer_cache, citation_check, llm, pipeline
 from app.services.chunking import embedding_text
+from app.services.query_planner import plan_queries
 
 router = APIRouter(prefix="/notebooks/{notebook_id}")
 messages_router = APIRouter()
@@ -106,6 +107,20 @@ def _retrieval_event(result: pipeline.RetrievalResult, citation_map: dict) -> di
     }
 
 
+async def _source_overviews(notebook_id: uuid.UUID, document_ids: list[uuid.UUID] | None) -> str | None:
+    """Summaries of the searched sources, one line each, for broad questions."""
+    stmt = select(Document.filename, Document.summary).where(
+        Document.notebook_id == notebook_id,
+        Document.status == DocumentStatus.ready,
+        Document.summary.is_not(None),
+    )
+    if document_ids is not None:
+        stmt = stmt.where(Document.id.in_(document_ids))
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(stmt.order_by(Document.created_at))).all()
+    return "\n".join(f"- {filename}: {summary}" for filename, summary in rows) or None
+
+
 def _nearest_excerpts(result: pipeline.RetrievalResult) -> list[dict]:
     """The closest passages, shown with an abstention so the user can judge for themselves."""
     _, citation_map = llm.build_context(result.selected[:NEAREST_EXCERPTS])
@@ -144,17 +159,36 @@ async def chat(
     async def events() -> AsyncIterator[str]:
         timer = StageTimer()
         result: pipeline.RetrievalResult | None = None
+        key: str | None = None
+        cached: AnswerCache | None = None
         try:
             async with AsyncSessionLocal() as session:
-                async for step in pipeline.run(session, notebook_id, question, history, document_ids, timer):
-                    if isinstance(step, pipeline.RetrievalResult):
-                        result = step
-                    else:
-                        # Durations of the stages finished so far, so the UI can show real timings.
-                        yield _sse("stage", {"stage": step, "timings_ms": timer.timings_ms})
+                yield _sse("stage", {"stage": "plan", "timings_ms": timer.timings_ms})
+                with timer.stage("plan"):
+                    plan = await plan_queries(question, history)
+                if settings.ENABLE_ANSWER_CACHE:
+                    # Keyed on the standalone question, so a follow-up only hits when it means the same thing.
+                    fingerprint = await answer_cache.fingerprint(session, notebook_id)
+                    key = answer_cache.cache_key(plan.standalone, document_ids, fingerprint)
+                    cached = await answer_cache.lookup(session, notebook_id, key)
+                if cached is None:
+                    async for step in pipeline.run(session, notebook_id, question, history, document_ids, timer, plan=plan):
+                        if isinstance(step, pipeline.RetrievalResult):
+                            result = step
+                        else:
+                            # Durations of the stages finished so far, so the UI can show real timings.
+                            yield _sse("stage", {"stage": step, "timings_ms": timer.timings_ms})
         except Exception:
             log.exception("Retrieval failed")
             yield _sse("error", {"detail": "Something went wrong searching your sources.", "retry_after": None})
+            return
+
+        if cached is not None:
+            yield _sse("token", {"text": cached.answer})
+            trace = {**cached.trace, "cached": True} if cached.trace else None
+            saved = await _save_assistant(notebook_id, cached.answer, cached.sources, confidence=cached.confidence, trace=trace)
+            log.info("chat answered from cache", extra={"notebook_id": str(notebook_id), "timings_ms": timer.timings_ms})
+            yield _sse("done", {"message": saved.model_dump(mode="json")})
             return
         if result is None:  # run() always ends with a result; guards against a future change
             return
@@ -180,7 +214,10 @@ async def chat(
             return
 
         yield _sse("stage", {"stage": "generate", "timings_ms": timer.timings_ms})
-        messages = llm.build_messages(question, context, history)
+        overviews = None
+        if pipeline.is_broad_question(question, result.plan.standalone):
+            overviews = await _source_overviews(notebook_id, document_ids)
+        messages = llm.build_messages(question, context, history, overviews)
         parts: list[str] = []
         usage: dict = {}
         try:
@@ -199,6 +236,7 @@ async def chat(
         answer = llm.normalize_citations("".join(parts)).strip() or "I couldn't generate an answer — please try rephrasing the question."
         sources = llm.parse_citations(answer, citation_map)
         coverage, uncited_claims = citation_check.citation_coverage(answer, set(citation_map))
+        degraded = (not sources and uncited_claims) or coverage < settings.MIN_CITATION_COVERAGE
         if not sources and uncited_claims:
             answer = UNCITED_ANSWER
             coverage = 0.0
@@ -226,6 +264,12 @@ async def chat(
             result, markers, usage, {m: v["support"] for m, v in verdicts.items()}, citation_coverage=coverage
         )
         saved = await _save_assistant(notebook_id, answer, sources, confidence=result.confidence, trace=trace)
+        if key and sources and not degraded:  # only clean, cited answers are worth repeating
+            try:
+                async with AsyncSessionLocal() as session:
+                    await answer_cache.store(session, notebook_id, key, answer, sources, result.confidence, trace)
+            except Exception:
+                log.exception("Storing the answer in the cache failed")
         log.info(
             "chat answered",
             extra={

@@ -163,13 +163,16 @@ async def run(
     history: list[tuple[str, str]],
     document_ids: list[uuid.UUID] | None = None,
     timer: StageTimer | None = None,
+    plan: QueryPlan | None = None,
 ) -> AsyncIterator[str | RetrievalResult]:
-    """Yields stage names ("plan", "search", "rerank") as they start, then the RetrievalResult."""
+    """Yields stage names ("plan", "search", "rerank") as they start, then the RetrievalResult.
+    Pass plan when the caller already planned (chat does, to check the answer cache first)."""
     timer = timer or StageTimer()
 
-    yield "plan"
-    with timer.stage("plan"):
-        plan = await plan_queries(question, history)
+    if plan is None:
+        yield "plan"
+        with timer.stage("plan"):
+            plan = await plan_queries(question, history)
 
     yield "search"
     queries = plan.search_queries

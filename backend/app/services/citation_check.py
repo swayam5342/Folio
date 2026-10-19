@@ -44,23 +44,33 @@ def claims_by_marker(answer: str) -> dict[str, list[str]]:
 
 
 def citation_coverage(answer: str, valid_markers: set[str]) -> tuple[float, list[str]]:
-    """Fraction of substantive answer claims carrying at least one valid citation."""
+    """Fraction of substantive answer claims carrying at least one valid citation.
+
+    As in claims_by_marker, markers placed after the full stop ("... bleached. [[C1]]")
+    split off as a sentence of their own and count for the claim before them."""
     total = 0
     cited = 0
     uncited: list[str] = []
+    last_uncited = False  # whether the claim just before this sentence lacked a citation
     for sentence in _SPLIT.split(answer):
         text = _DECORATION.sub("", CITATION_PATTERN.sub("", sentence)).strip()
+        markers = {f"C{n}" for n in CITATION_PATTERN.findall(sentence)}
+        if not text and last_uncited and markers & valid_markers:
+            uncited.pop()  # it was uncited only because its markers came after the full stop
+            cited += 1
+            last_uncited = False
+            continue
         if len(text) < MIN_CLAIM_CHARS:
             continue
         # Headings and explicit uncertainty do not assert a source fact.
         if sentence.lstrip().startswith("#") or text.casefold().startswith(("i couldn't", "the sources don't")):
             continue
         total += 1
-        markers = {f"C{n}" for n in CITATION_PATTERN.findall(sentence)}
-        if markers & valid_markers:
-            cited += 1
-        else:
+        last_uncited = not markers & valid_markers
+        if last_uncited:
             uncited.append(text)
+        else:
+            cited += 1
     return (1.0 if total == 0 else cited / total), uncited
 
 
