@@ -1,8 +1,3 @@
-"""Request dependencies: current user and ownership-checked resource lookups.
-
-Every lookup of a user-owned resource goes through these, and a resource the
-user doesn't own is reported as 404 so its existence isn't revealed.
-"""
 import uuid
 
 from fastapi import Depends, HTTPException, Request
@@ -14,7 +9,9 @@ from app.models import Document, Notebook, StudySet, User
 from app.security import SESSION_COOKIE, decode_token
 
 
-async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
+async def get_current_user(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> User:
     token = request.cookies.get(SESSION_COOKIE)
     user_id = decode_token(token) if token else None
     user = await db.get(User, user_id) if user_id else None

@@ -4,6 +4,7 @@ tied to the retrieved chunks, streams the answer from Groq, then parses those
 markers back into a structured source list (filename, page number, snippet)
 for the frontend to render as clickable citations.
 """
+
 import re
 from collections.abc import AsyncIterator
 
@@ -15,14 +16,18 @@ CITATION_PATTERN = re.compile(r"\[\[C(\d+)\]\]")
 
 # Models don't always follow the [[C1]] format: gpt-oss tends to emit its native
 # 【C1】 / 【C1†L3】 style, others write [C1] or [[C1, C2]]. Match all of those.
-_LOOSE_CITATION = re.compile(r"(?:\[\[?|【)\s*(C\d+(?:\s*[,;]\s*C?\d+)*)[^\]】\n]{0,20}?(?:\]\]?|】)")
+_LOOSE_CITATION = re.compile(
+    r"(?:\[\[?|【)\s*(C\d+(?:\s*[,;]\s*C?\d+)*)[^\]】\n]{0,20}?(?:\]\]?|】)"
+)
 
 
 def normalize_citations(text: str) -> str:
     """Rewrite any citation variant into canonical [[Cn]] markers."""
+
     def repl(m: re.Match) -> str:
         numbers = re.findall(r"\d+", m.group(1))
         return "".join(f"[[C{n}]]" for n in numbers)
+
     return _LOOSE_CITATION.sub(repl, text)
 
 
@@ -45,8 +50,14 @@ class LLMError(Exception):
 
 class RateLimited(LLMError):
     def __init__(self, retry_after: int | None):
-        wait = f" Try again in {retry_after} seconds." if retry_after else " Try again shortly."
-        super().__init__("The AI service is rate limited (free tier)." + wait, retry_after)
+        wait = (
+            f" Try again in {retry_after} seconds."
+            if retry_after
+            else " Try again shortly."
+        )
+        super().__init__(
+            "The AI service is rate limited (free tier)." + wait, retry_after
+        )
 
 
 class InvalidJSON(LLMError):
@@ -79,16 +90,22 @@ def build_context(retrieved: list[dict]) -> tuple[str, dict]:
     return "\n\n---\n\n".join(context_blocks), citation_map
 
 
-def build_messages(question: str, context: str, history: list[tuple[str, str]]) -> list[dict]:
+def build_messages(
+    question: str, context: str, history: list[tuple[str, str]]
+) -> list[dict]:
     """history: [(role, content), ...] oldest first. Old citation markers are stripped
     because they refer to excerpts that aren't in this prompt."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for role, content in history:
-        messages.append({"role": role, "content": CITATION_PATTERN.sub("", content).strip()})
-    messages.append({
-        "role": "user",
-        "content": f"Source excerpts:\n{context}\n\nQuestion: {question}",
-    })
+        messages.append(
+            {"role": role, "content": CITATION_PATTERN.sub("", content).strip()}
+        )
+    messages.append(
+        {
+            "role": "user",
+            "content": f"Source excerpts:\n{context}\n\nQuestion: {question}",
+        }
+    )
     return messages
 
 
@@ -113,7 +130,9 @@ def _to_llm_error(exc: groq.APIError) -> LLMError:
     if isinstance(exc, groq.AuthenticationError):
         return LLMError("The AI service rejected the API key — check GROQ_API_KEY.")
     if isinstance(exc, groq.APIStatusError):
-        return LLMError(f"The AI service returned an error ({exc.status_code}). Please try again.")
+        return LLMError(
+            f"The AI service returned an error ({exc.status_code}). Please try again."
+        )
     return LLMError("Couldn't reach the AI service. Check your internet connection.")
 
 
@@ -136,7 +155,9 @@ async def stream_answer(messages: list[dict]) -> AsyncIterator[str]:
         await client.close()
 
 
-async def complete_json(messages: list[dict], max_tokens: int = 6000, reasoning_effort: str = "low") -> str:
+async def complete_json(
+    messages: list[dict], max_tokens: int = 6000, reasoning_effort: str = "low"
+) -> str:
     """One non-streamed call in JSON mode; returns the raw JSON text. Raises LLMError / RateLimited.
 
     reasoning_effort (gpt-oss only) trades the free tier's 8,000 tokens/minute for accuracy:

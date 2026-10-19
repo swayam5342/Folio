@@ -3,9 +3,6 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 JWT_SECRET_PLACEHOLDER = "change-me"
-
-# The single .env lives at the repository root (shared with Docker Compose).
-# In the Docker image it doesn't exist; Compose passes the values as env vars instead.
 ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
 
 
@@ -23,9 +20,7 @@ class Settings(BaseSettings):
     # Auth
     JWT_SECRET: str = JWT_SECRET_PLACEHOLDER
     JWT_EXPIRE_DAYS: int = 7
-    COOKIE_SECURE: bool = False  # set true when served over HTTPS
-
-    # Uploads
+    COOKIE_SECURE: bool = False
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_MB: int = 50
 
@@ -39,7 +34,7 @@ class Settings(BaseSettings):
         if not self.JWT_SECRET or self.JWT_SECRET == JWT_SECRET_PLACEHOLDER:
             raise RuntimeError(
                 "JWT_SECRET is not set. Generate one with "
-                "`python -c \"import secrets; print(secrets.token_urlsafe(48))\"` and put it in .env"
+                '`python -c "import secrets; print(secrets.token_urlsafe(48))"` and put it in .env'
             )
 
 

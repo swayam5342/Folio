@@ -6,7 +6,6 @@ _model = None
 
 
 def get_model() -> SentenceTransformer:
-    """Lazy-loaded, process-wide singleton so the model loads once."""
     global _model
     if _model is None:
         _model = SentenceTransformer(settings.EMBEDDING_MODEL)
