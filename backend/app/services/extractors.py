@@ -245,12 +245,14 @@ def _markdown_blocks(text: str) -> list[dict]:
     return blocks
 
 
-def extract(kind: str, data: bytes) -> tuple[int, list[dict], int]:
+def extract(kind: str, data: bytes, report=None) -> tuple[int, list[dict], int]:
     """Source bytes → (page_count, pages, ocr_page_count). Pages carry blocks; their text
     is assembled after sanitizing (see ingest)."""
     if kind == "pdf":
-        page_count, pages, ocr_pages = extract_pages_from_pdf(data)
+        page_count, pages, ocr_pages = extract_pages_from_pdf(data, report)
         return page_count, [{"page_number": p["page_number"], "blocks": p["blocks"]} for p in pages], ocr_pages
+    if report:
+        report("reading", None, None)
     if kind == "docx":
         return 1, _docx_pages(data), 0
     if kind == "pptx":

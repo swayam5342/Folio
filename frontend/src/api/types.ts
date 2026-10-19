@@ -36,7 +36,15 @@ export type SourceDocument = {
   summary_status: 'pending' | 'done' | 'failed' | null
   /** When the current chunks (and viewer text) were stored. */
   indexed_at: string | null
+  /** Live indexing progress while processing. */
+  progress?: IndexProgress | null
   created_at: string
+}
+
+export type IndexProgress = {
+  stage: 'reading' | 'ocr' | 'chunking' | 'embedding' | 'saving'
+  done: number | null
+  total: number | null
 }
 
 /** A page (or slide) of a non-PDF source, as GET /documents/{id}/pages returns it. */

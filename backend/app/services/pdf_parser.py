@@ -140,7 +140,7 @@ def classify_block(block: dict, body_size: float) -> str:
     return "body"
 
 
-def extract_pages_from_pdf(file_bytes: bytes) -> tuple[int, list[dict], int]:
+def extract_pages_from_pdf(file_bytes: bytes, report=None) -> tuple[int, list[dict], int]:
     """
     Extracts text per page from a PDF, falling back to OCR for pages with no text layer.
     Returns (total_page_count, pages, ocr_page_count) with 1-indexed pages, where each page is
@@ -148,18 +148,23 @@ def extract_pages_from_pdf(file_bytes: bytes) -> tuple[int, list[dict], int]:
     Tables found by PyMuPDF become one Markdown "table" block in place of their text blocks.
     A page's text is its block texts joined by newlines. Pages with no text even after OCR are
     skipped in the list but still counted in the total. OCR'd pages are a single body block.
+    report(stage, done, total), when given, is told about every page as it is read.
     """
     raw_pages: list[tuple[int, list[dict] | None, str]] = []
     ocr_pages = 0
     with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
         page_count = doc.page_count
         for i, page in enumerate(doc):
+            if report:
+                report("reading", i + 1, page_count)
             blocks = _read_blocks(page)
             text = "\n".join(b["text"] for b in blocks)
             if _visible_chars(text) >= MIN_TEXT_CHARS:
                 blocks = _with_tables(page, blocks)
                 text = "\n".join(b["text"] for b in blocks)
             else:
+                if report:
+                    report("ocr", i + 1, page_count)
                 ocr_text = ocr_page(page).strip()
                 if _visible_chars(ocr_text) > _visible_chars(text):
                     raw_pages.append((i + 1, None, ocr_text))

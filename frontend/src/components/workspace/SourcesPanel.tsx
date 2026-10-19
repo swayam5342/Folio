@@ -51,6 +51,44 @@ function ReadyBurst() {
   )
 }
 
+/** What indexing is doing right now: "Reading page 12 of 240", "Embedding 96 of 480 passages"… */
+function progressLabel(doc: SourceDocument): string {
+  const p = doc.progress
+  if (!p) return 'Queued…'
+  const of = p.done != null && p.total ? ` ${p.done} of ${p.total}` : ''
+  switch (p.stage) {
+    case 'reading':
+      return doc.kind === 'pdf' && of ? `Reading page${of}` : 'Reading…'
+    case 'ocr':
+      return `OCR on page${of} (scanned)`
+    case 'chunking':
+      return 'Splitting into passages…'
+    case 'embedding':
+      return of ? `Embedding${of} passages` : 'Embedding…'
+    default:
+      return 'Saving…'
+  }
+}
+
+/** Determinate bar for stages that know their total. */
+function ProgressBar({ doc }: { doc: SourceDocument }) {
+  const p = doc.progress
+  if (!p || p.done == null || !p.total) return null
+  const pct = Math.round((100 * p.done) / p.total)
+  return (
+    <span
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={progressLabel(doc)}
+      className="mt-1.5 block h-1 overflow-hidden rounded-full bg-sunken"
+    >
+      <span className="block h-full rounded-full bg-[var(--src)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
+    </span>
+  )
+}
+
 /** "12 pages, 2 OCR · 1.2 MB", "8 slides · 300 KB", or just the size for single-page kinds. */
 function sourceMeta(doc: SourceDocument): string {
   const size = formatBytes(doc.size_bytes)
@@ -172,13 +210,14 @@ function SourceCard({
           </span>
           <span className={cx('mt-0.5 block text-xs', doc.status === 'failed' ? 'text-danger' : 'text-muted')}>
             {doc.status === 'processing'
-              ? 'Reading and indexing…'
+              ? progressLabel(doc)
               : doc.status === 'failed'
                 ? doc.error
                 : justReady
                   ? 'Indexed and ready'
                   : sourceMeta(doc)}
           </span>
+          {doc.status === 'processing' && <ProgressBar doc={doc} />}
           {ready && doc.risk_score > 0 && (
             <span
               className={cx(

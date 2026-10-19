@@ -77,6 +77,7 @@ class DocumentOut(ORMModel):
     summary: str | None = None
     summary_status: Literal["pending", "done", "failed"] | None = None
     indexed_at: datetime | None = None
+    progress: dict | None = None  # {"stage", "done", "total"} while processing
     created_at: datetime
 
     @field_validator("status", mode="before")

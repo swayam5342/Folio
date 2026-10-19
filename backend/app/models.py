@@ -92,6 +92,13 @@ class Document(Base):
     notebook = relationship("Notebook", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan", passive_deletes=True)
 
+    @property
+    def progress(self) -> dict | None:
+        """Live indexing progress while processing (see services/progress.py)."""
+        from app.services import progress
+
+        return progress.get(self.id) if self.status == DocumentStatus.processing else None
+
 
 class Chunk(Base):
     __tablename__ = "chunks"

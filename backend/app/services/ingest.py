@@ -11,7 +11,7 @@ from sqlalchemy import delete, update
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Chunk, Document, DocumentStatus, Notebook, utcnow
-from app.services import content_security, extractors, storage, summaries
+from app.services import content_security, extractors, progress, storage, summaries
 from app.services.chunking import assemble_pages, chunk_document, embedding_text
 from app.services.embeddings import embed_texts
 
@@ -33,12 +33,12 @@ class IngestError(Exception):
 
 
 def extract_and_embed(
-    data: bytes, kind: str, strategy: str, *, redact_pii: bool = False
+    data: bytes, kind: str, strategy: str, *, redact_pii: bool = False, report: progress.Reporter | None = None
 ) -> tuple[int, int, list[dict], list[list[float]], int, list[str], dict[str, int], list[dict]]:
     """Source bytes → (page_count, ocr_pages, chunks, embeddings, risk, reasons, pii, pages).
     pages is the sanitized page text the chunk offsets point into. CPU-bound: run it in a thread."""
     try:
-        page_count, pages, ocr_pages = extractors.extract(kind, data)
+        page_count, pages, ocr_pages = extractors.extract(kind, data, report)
     except Exception as exc:
         raise IngestError(UNREADABLE_ERROR.format(label=extractors.LABELS.get(kind, "file"))) from exc
     # Mask and normalize before chunking, so chunks, offsets and the stored viewer text agree.
@@ -46,6 +46,8 @@ def extract_and_embed(
     if not pages:
         raise IngestError(NO_TEXT_ERROR)
     pages = assemble_pages(pages, PDF_BLOCK_SEP if kind == "pdf" else TEXT_BLOCK_SEP)
+    if report:
+        report("chunking", None, None)
     chunks = chunk_document(pages, strategy)
     max_risk = 2 if had_invisible else 0
     reasons: set[str] = {"invisible_unicode"} if had_invisible else set()
@@ -56,7 +58,7 @@ def extract_and_embed(
         chunk["quarantined"] = settings.ENABLE_PROMPT_INJECTION_SCAN and scan.quarantined
         max_risk = max(max_risk, scan.risk_score)
         reasons.update(scan.reasons)
-    embeddings = embed_texts([embedding_text(c) for c in chunks])
+    embeddings = embed_texts([embedding_text(c) for c in chunks], report)
     return page_count, ocr_pages, chunks, embeddings, max_risk, sorted(reasons), pii_summary, pages
 
 
@@ -90,20 +92,25 @@ async def process_document(document_id: uuid.UUID) -> None:
         try:
             data = storage.absolute(document.storage_path).read_bytes()
             page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary, pages = await asyncio.to_thread(
-                extract_and_embed, data, document.kind, settings.CHUNK_STRATEGY, redact_pii=redact_pii
+                extract_and_embed, data, document.kind, settings.CHUNK_STRATEGY,
+                redact_pii=redact_pii, report=progress.reporter(document_id),
             )
             if document.kind != "pdf":  # the text viewer shows exactly the text the chunks came from
                 await asyncio.to_thread(storage.save_pages, document.storage_path, pages)
         except IngestError as exc:
+            progress.clear(document_id)
             await _mark_failed(document_id, str(exc))
             return
         except Exception:
+            progress.clear(document_id)
             log.exception("Processing document %s failed", document_id)
             await _mark_failed(document_id, GENERIC_ERROR)
             return
+        progress.reporter(document_id)("saving", None, None)
 
         # The document may have been deleted while we were embedding.
         if await db.get(Document, document_id, populate_existing=True) is None:
+            progress.clear(document_id)
             return
         await db.execute(delete(Chunk).where(Chunk.document_id == document_id))  # re-index: replace old chunks
         db.add_all(chunk_rows(document_id, chunks, embeddings))
@@ -119,6 +126,7 @@ async def process_document(document_id: uuid.UUID) -> None:
         document.summary = None
         document.summary_status = "pending" if settings.ENABLE_SOURCE_SUMMARIES else None
         await db.commit()
+        progress.clear(document_id)
 
     # After the commit: the source is already searchable while its summary is written.
     if settings.ENABLE_SOURCE_SUMMARIES:
