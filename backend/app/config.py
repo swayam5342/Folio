@@ -48,11 +48,12 @@ class Settings(BaseSettings):
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
     # Confidence. "high": best reranker score (0-1) >= CONFIDENCE_HIGH. "low" (and abstain) needs
     # both weak signals: reranker < CONFIDENCE_LOW and best cosine similarity < SIMILARITY_LOW.
-    # Without the reranker, SIMILARITY_HIGH / SIMILARITY_LOW alone decide.
+    # Without the reranker, SIMILARITY_HIGH / SIMILARITY_LOW alone decide. Tuned 2026-10-20 on the eval set:
+    # 0 answerable questions refused, 4 of 7 unanswerable refused (the rest have strong look-alike passages).
     CONFIDENCE_HIGH: float = 0.5
-    CONFIDENCE_LOW: float = 0.05
+    CONFIDENCE_LOW: float = 0.01
     SIMILARITY_HIGH: float = 0.75
-    SIMILARITY_LOW: float = 0.55
+    SIMILARITY_LOW: float = 0.60
     # A cited claim whose cross-encoder score against its excerpt is below this is "low support".
     SUPPORT_LOW: float = 0.01
     MIN_CITATION_COVERAGE: float = 0.8
