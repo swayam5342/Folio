@@ -22,7 +22,7 @@ router = APIRouter(prefix="/notebooks/{notebook_id}")
 messages_router = APIRouter()
 log = logging.getLogger(__name__)
 
-NO_SOURCES_ANSWER = "Upload a source to start chatting — once a PDF finishes processing I can answer questions about it."
+NO_SOURCES_ANSWER = "Upload a source to start chatting — once it finishes processing I can answer questions about it."
 NO_SELECTED_SOURCES_ANSWER = "None of the selected sources are ready to search. Tick at least one ready source and ask again."
 ABSTAIN_ANSWER = (
     "I couldn't find this in your sources. The passages below are the closest matches, but none of them "
@@ -99,7 +99,7 @@ def _retrieval_event(result: pipeline.RetrievalResult, citation_map: dict) -> di
         "confidence": result.confidence,
         "abstain": result.abstain,
         "passages": [
-            {k: source[k] for k in ("marker", "document_id", "filename", "page_number", "section_title", "score")}
+            {k: source[k] for k in ("marker", "document_id", "filename", "document_kind", "page_number", "section_title", "score")}
             for source in citation_map.values()
         ],
         "timings_ms": result.timer.timings_ms,
@@ -212,7 +212,7 @@ async def chat(
         if settings.ENABLE_CITATION_CHECK and settings.ENABLE_RERANKER and sources:
             yield _sse("stage", {"stage": "verify", "timings_ms": timer.timings_ms})
             passages = {
-                f"C{i}": embedding_text({"content": item["chunk"].content, "section_title": item["chunk"].section_title})
+                f"C{i}": embedding_text({"content": llm.passage_text(item), "section_title": item["chunk"].section_title})
                 for i, item in enumerate(result.selected, start=1)
             }
             try:
