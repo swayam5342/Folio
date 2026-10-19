@@ -31,3 +31,67 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+ignore = [
+    "B008",   # FastAPI's Depends(...) / File(...) in argument defaults is the framework idiom
+    "E501",   # long lines: line-length is a guide, SQL builders and messages read better unwrapped
+    "UP042",  # str+Enum models: StrEnum changes str() output, which stored values depend on
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]  # asserts and literal test passwords
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+exclude = ["alembic/"]
+# Typed modules, checked strictly in CI. The ORM models still use the untyped
+# Column(...) style; modules that lean on them join this list once the models
+# move to SQLAlchemy 2.0 Mapped[] annotations.
+files = [
+    "app/config.py",
+    "app/observability.py",
+    "app/security.py",
+    "app/services/chunking.py",
+    "app/services/citation_check.py",
+    "app/services/embeddings.py",
+    "app/services/pdf_parser.py",
+    "app/services/pipeline.py",
+    "app/services/query_planner.py",
+    "app/services/reranker.py",
+    "app/services/retrieval.py",
+    "app/services/storage.py",
+    "eval/metrics.py",
+    "eval/report.py",
+]
+follow_imports = "silent"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["db: needs a Postgres database with migrations applied (skipped when none is reachable)"]
+filterwarnings = ["ignore::DeprecationWarning:pymupdf.*"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/main.py"]

@@ -1,25 +1,23 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { BookOpen, Command, FileText, Files, MessageSquare, PanelLeft, PanelRight } from 'lucide-react'
+import { useEffect, useMemo, useState, type RefObject } from 'react'
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelImperativeHandle } from 'react-resizable-panels'
 import { Link, useParams } from 'react-router'
 
 import { ApiError } from '../api/client'
 import { useDocuments, useNotebook } from '../api/queries'
-import type { Source, SourceDocument, ViewerTarget } from '../api/types'
 import AppHeader from '../components/AppHeader'
-import ErrorBoundary from '../components/ErrorBoundary'
 import { ChevronLeft } from '../components/ui/icons'
-import { useToast } from '../components/ui/overlay'
-import { Spinner, cx } from '../components/ui/primitives'
+import { IconButton, Spinner, cx } from '../components/ui/primitives'
 import ChatPanel from '../components/workspace/ChatPanel'
+import RightPane from '../components/workspace/RightPane'
 import SourcesPanel from '../components/workspace/SourcesPanel'
 import StudyPanel from '../components/workspace/StudyPanel'
+import { SourceColorsContext, useSourceColors } from '../lib/useSourceColors'
+import { useWorkspace, type MobileTab } from '../lib/workspace'
 
-// pdf.js is large; load it only when a document is first opened.
-const PdfViewer = lazy(() => import('../components/workspace/PdfViewer'))
-
-type Tab = 'sources' | 'chat' | 'viewer'
-type Mode = 'chat' | 'study'
-
-function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {
+function ModeSwitch() {
+  const center = useWorkspace((s) => s.center)
+  const setCenter = useWorkspace((s) => s.setCenter)
   return (
     <div className="inline-flex rounded-md border border-line-strong p-0.5" role="tablist" aria-label="Chat or study">
       {(['chat', 'study'] as const).map((m) => (
@@ -27,11 +25,11 @@ function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => 
           key={m}
           type="button"
           role="tab"
-          aria-selected={mode === m}
-          onClick={() => onChange(m)}
+          aria-selected={center === m}
+          onClick={() => setCenter(m)}
           className={cx(
             'h-7 rounded px-3 font-serif text-[15px] font-semibold capitalize transition-colors',
-            mode === m ? 'bg-ink text-paper' : 'text-muted hover:text-ink',
+            center === m ? 'bg-ink text-paper' : 'text-muted hover:text-ink',
           )}
         >
           {m}
@@ -53,39 +51,55 @@ function useIsWide() {
   return wide
 }
 
+/** Keeps a collapsible panel in step with an open/closed flag in the store, both ways. */
+function useCollapsible(ref: RefObject<PanelImperativeHandle | null>, open: boolean) {
+  useEffect(() => {
+    const panel = ref.current
+    if (!panel) return
+    if (open && panel.isCollapsed()) panel.expand()
+    if (!open && !panel.isCollapsed()) panel.collapse()
+  }, [ref, open])
+}
+
+const LAYOUT_STORAGE = (() => {
+  try {
+    return window.localStorage
+  } catch {
+    return undefined
+  }
+})()
+
+const MOBILE_TABS: { id: MobileTab; label: string; Icon: typeof Files }[] = [
+  { id: 'sources', label: 'Sources', Icon: Files },
+  { id: 'chat', label: 'Chat', Icon: MessageSquare },
+  { id: 'side', label: 'Viewer', Icon: FileText },
+  { id: 'study', label: 'Study', Icon: BookOpen },
+]
+
 function Workspace({ notebookId }: { notebookId: string }) {
   const notebook = useNotebook(notebookId)
   const documents = useDocuments(notebookId)
-  const toast = useToast()
+  const colors = useSourceColors(notebookId)
   const wide = useIsWide()
-  const [tab, setTab] = useState<Tab>('chat')
-  const [mode, setMode] = useState<Mode>('chat')
-  const [viewer, setViewer] = useState<ViewerTarget | null>(null)
+  const ws = useWorkspace()
+  const { reset, center, excluded, rightOpen, sourcesOpen, mobileTab } = ws
+
+  useEffect(() => reset(notebookId), [notebookId, reset])
 
   const docs = documents.data ?? []
-  const readyCount = docs.filter((d) => d.status === 'ready').length
+  const readyDocs = useMemo(() => (documents.data ?? []).filter((d) => d.status === 'ready'), [documents.data])
   const processingCount = docs.filter((d) => d.status === 'processing').length
-
-  const open = useCallback(
-    (target: Omit<ViewerTarget, 'nonce'>) => {
-      setViewer({ ...target, nonce: Date.now() })
-      setTab('viewer')
-    },
-    [],
+  // null = search every ready source (no filter sent); otherwise the ticked ready sources.
+  const chatDocumentIds = useMemo(
+    () => (readyDocs.some((d) => excluded.has(d.id)) ? readyDocs.filter((d) => !excluded.has(d.id)).map((d) => d.id) : null),
+    [readyDocs, excluded],
   )
 
-  const openSource = (source: Source) => {
-    if (!docs.some((d) => d.id === source.document_id)) {
-      toast('That source was removed from this notebook.', 'error')
-      return
-    }
-    open({ documentId: source.document_id, page: source.page_number, snippet: source.snippet })
-  }
-  const openDocument = (doc: SourceDocument) => open({ documentId: doc.id, page: 1 })
-  const closeViewer = () => {
-    setViewer(null)
-    setTab('chat')
-  }
+  const sourcesRef = usePanelRef()
+  const rightRef = usePanelRef()
+  useCollapsible(sourcesRef, sourcesOpen)
+  useCollapsible(rightRef, rightOpen)
+  const layout = useDefaultLayout({ id: 'folio-workspace', storage: LAYOUT_STORAGE, onlySaveAfterUserInteractions: true })
 
   if (notebook.isError) {
     const missing = notebook.error instanceof ApiError && notebook.error.status === 404
@@ -102,109 +116,144 @@ function Workspace({ notebookId }: { notebookId: string }) {
     )
   }
 
-  const sources = (
-    <SourcesPanel
-      notebookId={notebookId}
-      activeDocumentId={viewer?.documentId ?? null}
-      onOpen={openDocument}
-      onRemoved={(id) => viewer?.documentId === id && closeViewer()}
-    />
-  )
-  const switcher = <ModeSwitch mode={mode} onChange={setMode} />
+  const sources = <SourcesPanel notebookId={notebookId} />
+  const switcher = <ModeSwitch />
   // Both stay mounted so a streaming answer or an open quiz survives switching.
-  const chat = (
+  const centerPane = (
     <>
-      <div className={cx('h-full', mode !== 'chat' && 'hidden')}>
+      <div className={cx('h-full', center !== 'chat' && 'hidden')}>
         <ChatPanel
           notebookId={notebookId}
-          readyCount={readyCount}
+          readyDocs={readyDocs}
           processingCount={processingCount}
-          onOpenSource={openSource}
+          documentIds={chatDocumentIds}
           switcher={switcher}
         />
       </div>
-      <div className={cx('h-full', mode !== 'study' && 'hidden')}>
-        <StudyPanel notebookId={notebookId} switcher={switcher} onOpenSource={openSource} />
+      <div className={cx('h-full', center !== 'study' && 'hidden')}>
+        <StudyPanel notebookId={notebookId} switcher={switcher} />
       </div>
     </>
   )
-  const pdf = viewer && (
-    <ErrorBoundary
-      key={viewer.nonce}
-      fallback={() => (
-        <div className="flex h-full flex-col items-center justify-center gap-3 bg-sunken px-6 text-center">
-          <p className="font-medium">This PDF couldn’t be displayed.</p>
-          <p className="text-sm text-muted">Try reloading the page. The cited text is still shown when you hover a citation.</p>
-          <button type="button" onClick={closeViewer} className="text-sm font-medium underline underline-offset-4">
-            Close viewer
-          </button>
-        </div>
-      )}
-    >
-    <Suspense
-      fallback={
-        <div className="flex h-full items-center justify-center bg-sunken text-muted">
-          <Spinner size={22} />
-        </div>
-      }
-    >
-      <PdfViewer target={viewer} document={docs.find((d) => d.id === viewer.documentId)} onClose={closeViewer} />
-    </Suspense>
-    </ErrorBoundary>
-  )
 
   return (
-    <div className="flex h-full flex-col">
-      <AppHeader>
-        <div className="flex min-w-0 items-center gap-1">
-          <Link
-            to="/"
-            className="flex shrink-0 items-center rounded-md p-1 text-muted hover:bg-sunken hover:text-ink"
-            aria-label="All notebooks"
-            title="All notebooks"
-          >
-            <ChevronLeft />
-          </Link>
-          <h1 className="truncate font-serif text-lg font-semibold" title={notebook.data?.name}>
-            {notebook.data?.name ?? <Spinner size={14} />}
-          </h1>
-        </div>
-      </AppHeader>
-
-      {wide ? (
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-72 shrink-0 border-r border-line">{sources}</aside>
-          <main className="min-w-0 flex-1">{chat}</main>
-          {pdf && <aside className="w-[46%] max-w-[860px] shrink-0 border-l border-line">{pdf}</aside>}
-        </div>
-      ) : (
-        <>
-          <nav className="flex shrink-0 border-b border-line" aria-label="Workspace sections">
-            {(['sources', 'chat', 'viewer'] as const).map((t) => (
+    <SourceColorsContext.Provider value={colors}>
+      <div className="flex h-full flex-col">
+        <AppHeader>
+          <div className="flex min-w-0 items-center gap-1">
+            <Link
+              to="/"
+              className="flex shrink-0 items-center rounded-md p-1 text-muted hover:bg-sunken hover:text-ink"
+              aria-label="All notebooks"
+              title="All notebooks"
+            >
+              <ChevronLeft />
+            </Link>
+            <h1 className="truncate font-serif text-lg font-semibold" title={notebook.data?.name}>
+              {notebook.data?.name ?? <Spinner size={14} />}
+            </h1>
+            <div className="ml-auto flex shrink-0 items-center gap-0.5 pl-2">
               <button
-                key={t}
                 type="button"
-                disabled={t === 'viewer' && !viewer}
-                onClick={() => setTab(t)}
-                aria-current={tab === t ? 'page' : undefined}
-                className={cx(
-                  'flex-1 border-b-2 py-2.5 text-sm font-medium capitalize disabled:opacity-40',
-                  tab === t ? 'border-ink text-ink' : 'border-transparent text-muted',
-                )}
+                onClick={() => ws.setPaletteOpen(true)}
+                className="hidden h-8 items-center gap-1.5 rounded-md border border-line px-2 text-xs text-muted transition-colors hover:border-line-strong hover:text-ink sm:inline-flex"
               >
-                {t === 'sources' ? `Sources${docs.length ? ` (${docs.length})` : ''}` : t === 'chat' ? (mode === 'chat' ? 'Chat' : 'Study') : t}
+                <Command aria-hidden size={13} /> Commands
+                <kbd className="rounded bg-sunken px-1 font-mono text-[10px]">Ctrl K</kbd>
               </button>
-            ))}
-          </nav>
-          <div className="min-h-0 flex-1">
-            {/* Chat stays mounted so a streaming answer survives tab switches. */}
-            <div className={cx('h-full', tab !== 'sources' && 'hidden')}>{sources}</div>
-            <div className={cx('h-full', tab !== 'chat' && 'hidden')}>{chat}</div>
-            {tab === 'viewer' && pdf}
+              {wide && (
+                <>
+                  <IconButton
+                    label={sourcesOpen ? 'Hide sources' : 'Show sources'}
+                    aria-pressed={sourcesOpen}
+                    onClick={() => ws.setSourcesOpen(!sourcesOpen)}
+                  >
+                    <PanelLeft size={17} />
+                  </IconButton>
+                  <IconButton
+                    label={rightOpen ? 'Hide viewer and inspector' : 'Show viewer and inspector'}
+                    aria-pressed={rightOpen}
+                    onClick={() => ws.setRightOpen(!rightOpen)}
+                  >
+                    <PanelRight size={17} />
+                  </IconButton>
+                </>
+              )}
+            </div>
           </div>
-        </>
-      )}
-    </div>
+        </AppHeader>
+
+        {wide ? (
+          <Group
+            orientation="horizontal"
+            id="folio-workspace"
+            className="min-h-0 flex-1"
+            defaultLayout={layout.defaultLayout}
+            onLayoutChanged={layout.onLayoutChanged}
+          >
+            <Panel
+              id="sources"
+              panelRef={sourcesRef}
+              defaultSize="22%"
+              minSize="15%"
+              maxSize="35%"
+              collapsible
+              collapsedSize="0%"
+              onResize={(size) => ws.setSourcesOpen(size.asPercentage > 0)}
+            >
+              <aside className="h-full border-r border-line">{sources}</aside>
+            </Panel>
+            <Separator className="pane-handle" />
+            <Panel id="center" minSize="30%">
+              <main className="h-full min-w-0">{centerPane}</main>
+            </Panel>
+            <Separator className="pane-handle" />
+            <Panel
+              id="right"
+              panelRef={rightRef}
+              defaultSize="38%"
+              minSize="24%"
+              collapsible
+              collapsedSize="0%"
+              onResize={(size) => ws.setRightOpen(size.asPercentage > 0)}
+            >
+              <aside className="h-full border-l border-line">
+                <RightPane notebookId={notebookId} docs={docs} onCollapse={() => ws.setRightOpen(false)} />
+              </aside>
+            </Panel>
+          </Group>
+        ) : (
+          <>
+            <div className="min-h-0 flex-1">
+              {/* Chat and study stay mounted so a streaming answer survives tab switches. */}
+              <div className={cx('h-full', mobileTab !== 'sources' && 'hidden')}>{sources}</div>
+              <div className={cx('h-full', mobileTab !== 'chat' && mobileTab !== 'study' && 'hidden')}>{centerPane}</div>
+              {mobileTab === 'side' && <RightPane notebookId={notebookId} docs={docs} />}
+            </div>
+            <nav
+              aria-label="Workspace sections"
+              className="flex shrink-0 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)]"
+            >
+              {MOBILE_TABS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => ws.setMobileTab(id)}
+                  aria-current={mobileTab === id ? 'page' : undefined}
+                  className={cx(
+                    'flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors',
+                    mobileTab === id ? 'text-ink' : 'text-muted',
+                  )}
+                >
+                  <Icon aria-hidden size={19} strokeWidth={mobileTab === id ? 2.2 : 1.8} />
+                  {id === 'sources' && docs.length ? `${label} (${docs.length})` : label}
+                </button>
+              ))}
+            </nav>
+          </>
+        )}
+      </div>
+    </SourceColorsContext.Provider>
   )
 }
 

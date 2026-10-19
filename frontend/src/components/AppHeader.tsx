@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { useLogout, useMe } from '../api/queries'
-import { Menu, ThemeToggle, Wordmark } from './ui/primitives'
+import { Menu, Wordmark } from './ui/primitives'
+import { ThemeMenu } from './ui/ThemeMenu'
 
 export default function AppHeader({ children }: { children?: ReactNode }) {
   const user = useMe().data
@@ -15,7 +16,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
         <Wordmark />
       </Link>
       <div className="min-w-0 flex-1">{children}</div>
-      <ThemeToggle />
+      <ThemeMenu />
       {user && (
         <Menu
           trigger={(props) => (
@@ -31,6 +32,8 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
             </button>
           )}
           items={[
+            { label: 'Evaluation', onSelect: () => navigate('/evaluation') },
+            { label: 'Design system', onSelect: () => navigate('/design') },
             {
               label: 'Sign out',
               onSelect: () => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) }),

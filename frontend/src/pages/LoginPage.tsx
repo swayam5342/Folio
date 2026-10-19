@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { ApiError } from '../api/client'
 import { useLogin, useRegister } from '../api/queries'
-import { Button, ThemeToggle, Wordmark, cx } from '../components/ui/primitives'
+import { ThemeMenu } from '../components/ui/ThemeMenu'
+import { Button, Wordmark, cx } from '../components/ui/primitives'
 
 type Mode = 'signin' | 'register'
 
@@ -133,7 +134,7 @@ export default function LoginPage() {
       <section className="flex flex-col px-4 py-6 sm:px-10">
         <div className="flex items-center justify-between lg:justify-end">
           <Wordmark className="lg:hidden" />
-          <ThemeToggle />
+          <ThemeMenu />
         </div>
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">
           <h1 className="font-serif text-3xl font-semibold tracking-tight">

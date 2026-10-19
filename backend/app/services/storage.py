@@ -13,6 +13,11 @@ def _root() -> Path:
     return Path(settings.UPLOAD_DIR).resolve()
 
 
+def root() -> Path:
+    """Resolved upload root for readiness checks and future storage adapters."""
+    return _root()
+
+
 def absolute(storage_path: str) -> Path:
     path = (_root() / storage_path).resolve()
     if _root() not in path.parents:

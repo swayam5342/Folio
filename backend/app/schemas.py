@@ -40,7 +40,14 @@ class NotebookCreate(BaseModel):
 
 
 class NotebookUpdate(BaseModel):
-    name: NotebookName
+    name: NotebookName | None = None
+    pii_redaction_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _has_change(self):
+        if self.name is None and self.pii_redaction_enabled is None:
+            raise ValueError("provide a name or pii_redaction_enabled")
+        return self
 
 
 class NotebookOut(ORMModel):
@@ -49,6 +56,7 @@ class NotebookOut(ORMModel):
     created_at: datetime
     updated_at: datetime
     source_count: int = 0
+    pii_redaction_enabled: bool = False
 
 
 # --- Documents ----------------------------------------------------------
@@ -62,6 +70,9 @@ class DocumentOut(ORMModel):
     size_bytes: int
     status: Literal["processing", "ready", "failed"]
     error: str | None
+    risk_score: int = 0
+    risk_reasons: list[str] = Field(default_factory=list)
+    pii_summary: dict[str, int] = Field(default_factory=dict)
     created_at: datetime
 
     @field_validator("status", mode="before")
@@ -74,15 +85,24 @@ class DocumentOut(ORMModel):
 
 class ChatRequest(BaseModel):
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    # Restrict retrieval to these sources (null = every ready source in the notebook).
+    document_ids: Annotated[list[uuid.UUID], Field(max_length=200)] | None = None
 
 
 class SourceOut(BaseModel):
-    marker: str | None = None  # "C3" — which [[Cn]] in the answer this source backs
+    marker: str | None = None  # "C3" — which [[Cn]] in the answer this source backs; null for nearest excerpts
     chunk_id: str
     document_id: str
     filename: str
     page_number: int
+    section_title: str | None = None
     snippet: str
+    score: float | None = None  # relevance to the question: reranker score (0-1), else cosine similarity
+    support: Literal["ok", "low"] | None = None  # does the excerpt support the claims citing it?
+    support_score: float | None = None
+
+
+Confidence = Literal["high", "medium", "low"]
 
 
 class MessageOut(ORMModel):
@@ -90,12 +110,58 @@ class MessageOut(ORMModel):
     role: Literal["user", "assistant"]
     content: str
     sources: list[SourceOut] = Field(default_factory=list)
+    confidence: Confidence | None = None
+    abstained: bool = False  # the sources didn't support an answer; sources are the nearest excerpts
     created_at: datetime
 
     @field_validator("role", mode="before")
     @classmethod
     def _enum_value(cls, v):
         return getattr(v, "value", v)
+
+
+class TraceCandidate(BaseModel):
+    chunk_id: str
+    document_id: str
+    filename: str
+    page_number: int
+    section_title: str | None
+    snippet: str
+    vector_rank: int | None
+    keyword_rank: int | None
+    vector_similarity: float | None
+    fused_score: float
+    rerank_score: float | None
+    selected: bool
+    marker: str | None
+    support: Literal["ok", "low"] | None = None
+
+
+class TracePlanner(BaseModel):
+    llm_called: bool
+    cached: bool
+    error: str | None
+
+
+class TraceOut(BaseModel):
+    """How an answer was retrieved: queries searched, every candidate's scores, timings, tokens."""
+    message_id: uuid.UUID
+    question: str
+    standalone_query: str
+    variants: list[str]
+    hypothetical: str | None
+    planner: TracePlanner
+    document_ids: list[str] | None
+    features: dict[str, bool]
+    candidates: list[TraceCandidate]
+    reranked: bool
+    confidence: Confidence | None
+    top_score: float | None
+    abstained: bool
+    timings_ms: dict[str, float]
+    total_ms: float
+    tokens: dict[str, dict | None]
+    citation_coverage: float | None = None
 
 
 # --- Study sets -----------------------------------------------------------

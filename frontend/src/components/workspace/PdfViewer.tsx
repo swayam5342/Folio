@@ -4,6 +4,8 @@ import 'react-pdf/dist/Page/TextLayer.css'
 
 import { documentFileUrl } from '../../api/queries'
 import type { SourceDocument, ViewerTarget } from '../../api/types'
+import { sourceColorStyle } from '../../lib/sourceColors'
+import CitationBeam, { type Point } from './CitationBeam'
 import { ChevronLeft, ChevronRight, CloseIcon } from '../ui/icons'
 import { IconButton, Spinner } from '../ui/primitives'
 
@@ -49,24 +51,25 @@ function findSnippetItems(items: TextItem[], snippet: string): Set<number> {
 export default function PdfViewer({
   target,
   document: doc,
+  color,
+  beamFrom,
   onClose,
 }: {
   target: ViewerTarget
   document: SourceDocument | undefined
+  /** The source's hue: tints its highlight and the beam. */
+  color: number
+  /** Where the clicked citation was, to draw a beam from it to the highlight. */
+  beamFrom: Point | null
   onClose: () => void
 }) {
   const [numPages, setNumPages] = useState<number>(0)
   const [page, setPage] = useState(target.page)
   const [marked, setMarked] = useState<Set<number>>(new Set())
   const [width, setWidth] = useState(0)
+  const [beamTo, setBeamTo] = useState<Point | null>(null)
   const frame = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
-
-  // New target (citation click) → jump to its page.
-  useEffect(() => {
-    setPage(target.page)
-    setMarked(new Set())
-  }, [target.documentId, target.page, target.nonce])
 
   useEffect(() => {
     const el = frame.current
@@ -90,23 +93,35 @@ export default function PdfViewer({
     [highlightOnThisPage, target.snippet],
   )
 
+  // Marked runs are numbered so the highlighter stroke sweeps through them in reading order.
+  const order = useMemo(() => [...marked].sort((a, b) => a - b), [marked])
   const textRenderer = useCallback(
     ({ str, itemIndex }: { str: string; itemIndex: number }) =>
-      marked.has(itemIndex) ? `<mark>${escapeHtml(str)}</mark>` : escapeHtml(str),
-    [marked],
+      marked.has(itemIndex)
+        ? `<mark style="--i:${Math.min(order.indexOf(itemIndex), 12)}">${escapeHtml(str)}</mark>`
+        : escapeHtml(str),
+    [marked, order],
   )
 
-  // Scroll the first highlight into view once the text layer is drawn.
+  // Scroll the first highlight into view once the text layer is drawn, then aim the beam at it.
   const onTextLayer = useCallback(() => {
     const mark = scroller.current?.querySelector('.textLayer mark')
-    mark?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [])
+    if (!mark) return
+    mark.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    if (beamFrom) {
+      window.setTimeout(() => {
+        const r = mark.getBoundingClientRect()
+        setBeamTo({ x: r.left, y: r.top + r.height / 2 })
+      }, 420)
+    }
+  }, [beamFrom])
 
   const go = (delta: number) => setPage((p) => Math.min(Math.max(1, p + delta), numPages || 1))
 
   return (
-    <section aria-label="Document viewer" className="flex h-full flex-col bg-sunken">
+    <section aria-label="Document viewer" className="flex h-full flex-col bg-sunken" style={sourceColorStyle(color)}>
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-paper px-3">
+        <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-[var(--src)]" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" title={doc?.filename}>
             {doc?.filename ?? 'Document'}
@@ -126,6 +141,7 @@ export default function PdfViewer({
         </IconButton>
       </div>
 
+      {beamFrom && beamTo && <CitationBeam key={target.nonce} from={beamFrom} to={beamTo} color={color} />}
       <div ref={scroller} className="flex-1 overflow-auto p-4">
         <div ref={frame} className="mx-auto w-full max-w-[900px]">
           <Document

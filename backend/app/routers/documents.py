@@ -11,6 +11,7 @@ from app.deps import get_current_user, get_owned_document, get_owned_notebook
 from app.models import Document, DocumentStatus, Notebook, User
 from app.schemas import DocumentOut
 from app.services import storage
+from app.services.content_security import UnsafePDFError, validate_pdf
 from app.services.ingest import process_document
 
 router = APIRouter()
@@ -51,6 +52,10 @@ async def upload_document(
     data = await _read_capped(file, settings.MAX_UPLOAD_MB * 1024 * 1024)
     if not data.startswith(b"%PDF-"):
         raise HTTPException(status_code=400, detail="That file isn't a valid PDF")
+    try:
+        validate_pdf(data, max_pages=settings.MAX_PDF_PAGES)
+    except UnsafePDFError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     document_id = uuid.uuid4()
     storage_path = storage.save_pdf(user.id, document_id, data)
@@ -92,6 +97,25 @@ async def get_document_file(document: Document = Depends(get_owned_document)):
         content_disposition_type="inline",
         headers={"Cache-Control": "private, max-age=3600"},
     )
+
+
+@router.post("/documents/{document_id}/reindex", response_model=DocumentOut, status_code=202)
+async def reindex_document(
+    background: BackgroundTasks,
+    document: Document = Depends(get_owned_document),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-chunk and re-embed a document with the current CHUNK_STRATEGY (it is unsearchable meanwhile)."""
+    if document.status == DocumentStatus.processing:
+        raise HTTPException(status_code=409, detail="This source is already being processed")
+    if not storage.absolute(document.storage_path).exists():
+        raise HTTPException(status_code=409, detail="The stored file is missing; upload it again")
+    document.status = DocumentStatus.processing
+    document.error = None
+    await db.commit()
+    await db.refresh(document)
+    background.add_task(process_document, document.id)
+    return document
 
 
 @router.delete("/documents/{document_id}", status_code=204)

@@ -1,14 +1,18 @@
-"""Background processing of uploaded PDFs: extract → chunk → embed → store."""
+"""Background processing of uploaded PDFs: extract → chunk → embed → store.
+
+The same job re-indexes an existing document (e.g. after CHUNK_STRATEGY changes):
+the old chunks are replaced in the same transaction that stores the new ones."""
 import asyncio
 import logging
 import uuid
 
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
+from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import Chunk, Document, DocumentStatus
-from app.services import storage
-from app.services.chunking import chunk_pages
+from app.models import Chunk, Document, DocumentStatus, Notebook
+from app.services import content_security, storage
+from app.services.chunking import chunk_document, embedding_text
 from app.services.embeddings import embed_texts
 from app.services.pdf_parser import extract_pages_from_pdf
 
@@ -24,17 +28,52 @@ class IngestError(Exception):
     """A failure whose message is safe to show the user."""
 
 
-def _extract_and_embed(path) -> tuple[int, int, list[dict], list[list[float]]]:
-    """CPU-bound work, run in a thread so the event loop keeps serving requests."""
+def extract_and_embed(
+    data: bytes, strategy: str, *, redact_pii: bool = False
+) -> tuple[int, int, list[dict], list[list[float]], int, list[str], dict[str, int]]:
+    """PDF bytes → (page_count, ocr_pages, chunks, embeddings). CPU-bound: run it in a thread."""
     try:
-        page_count, pages, ocr_pages = extract_pages_from_pdf(path.read_bytes())
+        page_count, pages, ocr_pages = extract_pages_from_pdf(data)
     except Exception as exc:
         raise IngestError(UNREADABLE_ERROR) from exc
     if not pages:
         raise IngestError(NO_TEXT_ERROR)
-    chunks = chunk_pages(pages)
-    embeddings = embed_texts([c["content"] for c in chunks])
-    return page_count, ocr_pages, chunks, embeddings
+    chunks = chunk_document(pages, strategy)
+    max_risk = 0
+    reasons: set[str] = set()
+    pii_summary: dict[str, int] = {}
+    for chunk in chunks:
+        scan = content_security.scan_text(chunk["content"], redact_pii=redact_pii)
+        chunk["content"] = scan.text
+        chunk["risk_score"] = scan.risk_score
+        chunk["risk_reasons"] = scan.reasons
+        chunk["quarantined"] = settings.ENABLE_PROMPT_INJECTION_SCAN and scan.quarantined
+        max_risk = max(max_risk, scan.risk_score)
+        reasons.update(scan.reasons)
+        for kind, count in scan.pii_counts.items():
+            pii_summary[kind] = pii_summary.get(kind, 0) + count
+    embeddings = embed_texts([embedding_text(c) for c in chunks])
+    return page_count, ocr_pages, chunks, embeddings, max_risk, sorted(reasons), pii_summary
+
+
+def chunk_rows(document_id: uuid.UUID, chunks: list[dict], embeddings: list[list[float]]) -> list[Chunk]:
+    """ORM rows for a document's chunks."""
+    return [
+        Chunk(
+            document_id=document_id,
+            page_number=c["page_number"],
+            chunk_index=c["chunk_index"],
+            content=c["content"],
+            section_title=c["section_title"],
+            char_start=c["char_start"],
+            char_end=c["char_end"],
+            risk_score=c.get("risk_score", 0),
+            risk_reasons=c.get("risk_reasons", []),
+            quarantined=c.get("quarantined", False),
+            embedding=e,
+        )
+        for c, e in zip(chunks, embeddings, strict=True)
+    ]
 
 
 async def process_document(document_id: uuid.UUID) -> None:
@@ -42,9 +81,12 @@ async def process_document(document_id: uuid.UUID) -> None:
         document = await db.get(Document, document_id)
         if document is None:
             return  # deleted before processing started
+        notebook = await db.get(Notebook, document.notebook_id)
+        redact_pii = bool(settings.ENABLE_PII_REDACTION and notebook and notebook.pii_redaction_enabled)
         try:
-            page_count, ocr_pages, chunks, embeddings = await asyncio.to_thread(
-                _extract_and_embed, storage.absolute(document.storage_path)
+            data = storage.absolute(document.storage_path).read_bytes()
+            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary = await asyncio.to_thread(
+                extract_and_embed, data, settings.CHUNK_STRATEGY, redact_pii=redact_pii
             )
         except IngestError as exc:
             await _mark_failed(document_id, str(exc))
@@ -57,18 +99,14 @@ async def process_document(document_id: uuid.UUID) -> None:
         # The document may have been deleted while we were embedding.
         if await db.get(Document, document_id, populate_existing=True) is None:
             return
-        db.add_all(
-            Chunk(
-                document_id=document_id,
-                page_number=c["page_number"],
-                chunk_index=c["chunk_index"],
-                content=c["content"],
-                embedding=e,
-            )
-            for c, e in zip(chunks, embeddings)
-        )
+        await db.execute(delete(Chunk).where(Chunk.document_id == document_id))  # re-index: replace old chunks
+        db.add_all(chunk_rows(document_id, chunks, embeddings))
         document.page_count = page_count
         document.ocr_pages = ocr_pages
+        document.chunk_strategy = settings.CHUNK_STRATEGY
+        document.risk_score = risk_score
+        document.risk_reasons = risk_reasons
+        document.pii_summary = pii_summary
         document.status = DocumentStatus.ready
         document.error = None
         await db.commit()

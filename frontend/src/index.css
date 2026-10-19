@@ -1,68 +1,8 @@
 @import 'tailwindcss';
+@import './styles/tokens.css';
 
-
-:root {
-  --paper: #f6f6f3;
-  --surface: #ffffff;
-  --sunken: #eeeeea;
-  --ink: #1c2330;
-  --muted: #5d6573;
-  --faint: #8a909b;
-  --line: #dcddd8;
-  --line-strong: #c4c6bf;
-  --highlight: #f3d74c;
-  --highlight-soft: #f8e88f;
-  --highlight-ink: #1c2330;
-  --danger: #a3302a;
-  --danger-soft: #f6e3e1;
-  --ok: #2f6b45;
-  --ok-soft: #e3efe6;
-  --focus: #1c2330;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --paper: #14171d;
-    --surface: #1b1f27;
-    --sunken: #11141a;
-    --ink: #e7e9ec;
-    --muted: #a3a9b3;
-    --faint: #737a86;
-    --line: #2c313b;
-    --line-strong: #3b414d;
-    --highlight: #d9bd3a;
-    --highlight-soft: rgba(217, 189, 58, 0.28);
-    --highlight-ink: #14171d;
-    --danger: #f08a80;
-    --danger-soft: rgba(240, 138, 128, 0.12);
-    --ok: #7cc495;
-    --ok-soft: rgba(124, 196, 149, 0.14);
-    --focus: #e7e9ec;
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme='dark'] {
-  --paper: #14171d;
-  --surface: #1b1f27;
-  --sunken: #11141a;
-  --ink: #e7e9ec;
-  --muted: #a3a9b3;
-  --faint: #737a86;
-  --line: #2c313b;
-  --line-strong: #3b414d;
-  --highlight: #d9bd3a;
-  --highlight-soft: rgba(217, 189, 58, 0.28);
-  --highlight-ink: #14171d;
-  --danger: #f08a80;
-  --danger-soft: rgba(240, 138, 128, 0.12);
-  --ok: #7cc495;
-  --ok-soft: rgba(124, 196, 149, 0.14);
-  --focus: #e7e9ec;
-  color-scheme: dark;
-}
-
+/* Semantic colors as Tailwind utilities (bg-surface, text-muted, border-src ...).
+   `inline` so each utility reads the live variable and follows the active theme. */
 @theme inline {
   --color-paper: var(--paper);
   --color-surface: var(--surface);
@@ -72,6 +12,10 @@
   --color-faint: var(--faint);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-2: var(--accent-2);
   --color-highlight: var(--highlight);
   --color-highlight-soft: var(--highlight-soft);
   --color-highlight-ink: var(--highlight-ink);
@@ -79,9 +23,17 @@
   --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  /* The current source's hue, set on a subtree by sourceColorStyle(). */
+  --color-src: var(--src);
+  --color-src-soft: var(--src-soft);
+  --color-src-ink: var(--src-ink);
 
-  --font-serif: 'Newsreader', 'Iowan Old Style', Georgia, serif;
-  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  --font-serif: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
 }
 
 @layer base {
@@ -96,7 +48,9 @@
     font-family: var(--font-sans);
     font-size: 15px;
     line-height: 1.5;
+    font-feature-settings: 'cv11', 'ss01'; /* Inter: single-storey a, open digits */
     -webkit-font-smoothing: antialiased;
+    transition: background-color var(--dur-base) var(--ease-out);
   }
   :focus-visible {
     outline: 2px solid var(--focus);
@@ -106,6 +60,97 @@
   ::selection {
     background: var(--highlight-soft);
   }
+}
+
+/* ------------------------------------------------------------ texture & depth */
+
+/* Film grain over the whole app. Decorative: ignores pointer events, hidden in Calm mode. */
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-grain);
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* Slowly drifting gradient mesh for hero areas. */
+.mesh-bg {
+  position: relative;
+  isolation: isolate;
+}
+.mesh-bg::before {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  z-index: -1;
+  opacity: var(--mesh-opacity);
+  background:
+    radial-gradient(40% 50% at 15% 20%, var(--mesh-1), transparent 70%),
+    radial-gradient(35% 45% at 85% 15%, var(--mesh-2), transparent 70%),
+    radial-gradient(45% 50% at 75% 85%, var(--mesh-3), transparent 70%),
+    radial-gradient(40% 45% at 20% 90%, var(--mesh-4), transparent 70%);
+  filter: blur(var(--blur-heavy));
+  animation: mesh-drift 24s var(--ease-in-out) infinite alternate;
+}
+@keyframes mesh-drift {
+  to { transform: translate3d(3%, -2%, 0) rotate(8deg) scale(1.08); }
+}
+
+/* Frosted panel with an inner top highlight. */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--blur-glass)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(1.4);
+  box-shadow: var(--shadow-float);
+}
+
+/* Hairline gradient border (padding-box/border-box trick, keeps the radius). */
+.border-gradient {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    linear-gradient(135deg, var(--accent), var(--accent-2) 55%, var(--src-4)) border-box;
+}
+
+/* Display type whose variable weight swells on hover. */
+.type-flex {
+  font-weight: 480;
+  transition: font-weight var(--dur-slow) var(--ease-out);
+}
+.type-flex:hover {
+  font-weight: 760;
+}
+
+/* ------------------------------------------------------------ theme switch */
+/* A circular reveal from the theme menu (View Transitions API, see lib/theme.ts). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: theme-reveal 520ms var(--ease-out);
+}
+@keyframes theme-reveal {
+  from { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 0)); }
+  to { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 0)); }
+}
+
+/* ------------------------------------------------------------ calm mode */
+/* Calm mode: no grain, no drifting backgrounds, no animation. Same as reduced motion below. */
+:root[data-calm] .grain::after {
+  display: none;
+}
+:root[data-calm] *,
+:root[data-calm] *::before,
+:root[data-calm] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
 
 /* Highlighter mark: used for citation chips and the matching passage in the PDF. */
@@ -120,22 +165,24 @@
   color: var(--highlight-ink);
 }
 
-/* pdf.js text layer: keep text invisible except our marks. */
+/* pdf.js text layer: keep text invisible except our marks. The mark is a highlighter
+   stroke in the cited source's color (--src, set on the viewer) that sweeps left to right,
+   one text run after another (--i is the run's order). */
 .pdf-page .textLayer mark {
-  background: var(--highlight);
-  opacity: 0.45;
   color: transparent;
   border-radius: 2px;
   padding: 1px 0;
+  background-color: transparent;
+  background-image: linear-gradient(var(--src, var(--highlight)), var(--src, var(--highlight)));
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  opacity: 0.42;
+  animation: marker-stroke 420ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 250ms);
 }
-
-@keyframes pulse-mark {
-  0% { opacity: 0; }
-  40% { opacity: 0.75; }
-  100% { opacity: 0.45; }
-}
-.pdf-page .textLayer mark {
-  animation: pulse-mark 900ms ease-out;
+@keyframes marker-stroke {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
 }
 
 @keyframes caret {
@@ -214,14 +261,14 @@
   border-top: 1px solid var(--line);
 }
 .answer-md :not(pre) > code {
-  font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.82em;
   background: var(--sunken);
   border-radius: 4px;
   padding: 0.1em 0.35em;
 }
 .answer-code pre {
-  font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   line-height: 1.6;
   background: var(--sunken);
@@ -319,4 +366,30 @@
 .answer-table .katex {
   font-size: 1.2em; /* table text is small; fractions need room to stay legible */
   line-height: normal;
+}
+
+/* ------------------------------------------------------------ workspace panes */
+/* Resize handle between panes: a 6px hit area whose accent line shows on hover, drag and focus. */
+.pane-handle {
+  position: relative;
+  width: 6px;
+  margin-inline: -3px;
+  z-index: 5;
+  outline: none;
+}
+.pane-handle::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.pane-handle:hover::after,
+.pane-handle:focus-visible::after,
+.pane-handle[data-separator='hover']::after,
+.pane-handle[data-separator='active']::after {
+  background: var(--accent);
 }

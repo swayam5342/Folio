@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentPropsWithRef, type ReactNode } from 'react'
 
-import { MoonIcon, SunIcon } from './icons'
-
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 export { cx }
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
+type Variant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger'
 
 const variants: Record<Variant, string> = {
   primary: 'bg-ink text-paper hover:opacity-90 disabled:opacity-40',
+  accent: 'bg-accent text-accent-ink shadow-glow hover:brightness-110 disabled:opacity-40 disabled:shadow-none',
   secondary: 'border border-line-strong bg-surface text-ink hover:bg-sunken disabled:opacity-50',
   ghost: 'text-muted hover:text-ink hover:bg-sunken disabled:opacity-40',
   danger: 'bg-danger text-paper hover:opacity-90 disabled:opacity-40',
@@ -135,35 +134,6 @@ export function Menu({
         </div>
       )}
     </div>
-  )
-}
-
-type Theme = 'light' | 'dark'
-
-function currentTheme(): Theme {
-  const set = document.documentElement.dataset.theme
-  if (set === 'light' || set === 'dark') return set
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(currentTheme)
-  const next: Theme = theme === 'dark' ? 'light' : 'dark'
-  return (
-    <IconButton
-      label={`Switch to ${next} theme`}
-      onClick={() => {
-        document.documentElement.dataset.theme = next
-        try {
-          localStorage.setItem('folio-theme', next)
-        } catch {
-          /* storage unavailable: theme still applies for this visit */
-        }
-        setTheme(next)
-      }}
-    >
-      {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-    </IconButton>
   )
 }
 

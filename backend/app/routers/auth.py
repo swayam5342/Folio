@@ -44,7 +44,7 @@ async def register(payload: Credentials, response: Response, db: AsyncSession = 
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="That username is already taken")
+        raise HTTPException(status_code=409, detail="That username is already taken") from None
     await db.refresh(user)
     _set_session(response, user)
     return user

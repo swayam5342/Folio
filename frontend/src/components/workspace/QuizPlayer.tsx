@@ -4,7 +4,7 @@ import { useSaveScore } from '../../api/queries'
 import type { QuizItem, Source, StudySet } from '../../api/types'
 import { ChevronLeft } from '../ui/icons'
 import { Button, cx } from '../ui/primitives'
-import { CitationChip } from './AnswerText'
+import { CitationChip } from './CitationChip'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 

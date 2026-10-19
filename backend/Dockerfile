@@ -22,15 +22,18 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
-# Bake the embedding model into the image so the container never needs Hugging Face at runtime.
+# Bake the embedding and reranker models into the image so the container never needs Hugging Face at runtime.
 ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')"
+ARG RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L6-v2
+RUN python -c "from sentence_transformers import CrossEncoder, SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}'); CrossEncoder('${RERANKER_MODEL}')"
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
 
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
+# Latest evaluation results, shown on the in-app Evaluation page.
+COPY eval/results/latest.json ./eval/results/latest.json
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN useradd --create-home --uid 1000 folio \
