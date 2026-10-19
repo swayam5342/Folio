@@ -180,6 +180,19 @@
   animation: marker-stroke 420ms var(--ease-out) both;
   animation-delay: calc(var(--i, 0) * 45ms + 250ms);
 }
+/* "Search in document" matches: a plain yellow-ish wash, distinct from the cited-passage stroke. */
+.pdf-page .textLayer mark.search-hit {
+  background-image: none;
+  background-color: var(--highlight);
+  opacity: 0.55;
+  animation: none;
+}
+/* The PDF's own table of contents in the viewer sidebar. */
+.pdf-outline ul { padding-left: 0.6rem; }
+.pdf-outline > ul { padding-left: 0; }
+.pdf-outline a { display: block; padding: 0.2rem 0.25rem; border-radius: 0.25rem; cursor: pointer; color: var(--muted); }
+.pdf-outline a:hover { background: var(--sunken); color: var(--ink); }
+
 /* Text viewer (Word, PowerPoint, Markdown, text): the same highlighter stroke over real text. */
 .text-source mark {
   color: inherit;
