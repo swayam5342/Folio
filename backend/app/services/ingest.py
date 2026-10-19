@@ -12,7 +12,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Chunk, Document, DocumentStatus, Notebook
 from app.services import content_security, storage
-from app.services.chunking import chunk_document, embedding_text
+from app.services.chunking import assemble_pages, chunk_document, embedding_text
 from app.services.embeddings import embed_texts
 from app.services.pdf_parser import extract_pages_from_pdf
 
@@ -23,37 +23,42 @@ UNREADABLE_ERROR = "This file couldn't be read as a PDF."
 GENERIC_ERROR = "Processing failed — please try uploading again."
 INTERRUPTED_ERROR = "Processing was interrupted — please re-upload."
 
+# Block separators in assembled page text. PDFs keep single newlines (their chunks predate
+# this); other kinds use blank lines so the text viewer shows paragraphs.
+PDF_BLOCK_SEP = "\n"
+TEXT_BLOCK_SEP = "\n\n"
+
 
 class IngestError(Exception):
     """A failure whose message is safe to show the user."""
 
 
 def extract_and_embed(
-    data: bytes, strategy: str, *, redact_pii: bool = False
-) -> tuple[int, int, list[dict], list[list[float]], int, list[str], dict[str, int]]:
-    """PDF bytes → (page_count, ocr_pages, chunks, embeddings). CPU-bound: run it in a thread."""
+    data: bytes, kind: str, strategy: str, *, redact_pii: bool = False
+) -> tuple[int, int, list[dict], list[list[float]], int, list[str], dict[str, int], list[dict]]:
+    """Source bytes → (page_count, ocr_pages, chunks, embeddings, risk, reasons, pii, pages).
+    pages is the sanitized page text the chunk offsets point into. CPU-bound: run it in a thread."""
     try:
         page_count, pages, ocr_pages = extract_pages_from_pdf(data)
     except Exception as exc:
         raise IngestError(UNREADABLE_ERROR) from exc
+    # Mask and normalize before chunking, so chunks, offsets and the stored viewer text agree.
+    pages, pii_summary, had_invisible = content_security.sanitize_pages(pages, redact_pii=redact_pii)
     if not pages:
         raise IngestError(NO_TEXT_ERROR)
+    pages = assemble_pages(pages, PDF_BLOCK_SEP if kind == "pdf" else TEXT_BLOCK_SEP)
     chunks = chunk_document(pages, strategy)
-    max_risk = 0
-    reasons: set[str] = set()
-    pii_summary: dict[str, int] = {}
+    max_risk = 2 if had_invisible else 0
+    reasons: set[str] = {"invisible_unicode"} if had_invisible else set()
     for chunk in chunks:
-        scan = content_security.scan_text(chunk["content"], redact_pii=redact_pii)
-        chunk["content"] = scan.text
+        scan = content_security.scan_text(chunk["content"])  # injection risk only: text is already clean
         chunk["risk_score"] = scan.risk_score
         chunk["risk_reasons"] = scan.reasons
         chunk["quarantined"] = settings.ENABLE_PROMPT_INJECTION_SCAN and scan.quarantined
         max_risk = max(max_risk, scan.risk_score)
         reasons.update(scan.reasons)
-        for kind, count in scan.pii_counts.items():
-            pii_summary[kind] = pii_summary.get(kind, 0) + count
     embeddings = embed_texts([embedding_text(c) for c in chunks])
-    return page_count, ocr_pages, chunks, embeddings, max_risk, sorted(reasons), pii_summary
+    return page_count, ocr_pages, chunks, embeddings, max_risk, sorted(reasons), pii_summary, pages
 
 
 def chunk_rows(document_id: uuid.UUID, chunks: list[dict], embeddings: list[list[float]]) -> list[Chunk]:
@@ -85,8 +90,8 @@ async def process_document(document_id: uuid.UUID) -> None:
         redact_pii = bool(settings.ENABLE_PII_REDACTION and notebook and notebook.pii_redaction_enabled)
         try:
             data = storage.absolute(document.storage_path).read_bytes()
-            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary = await asyncio.to_thread(
-                extract_and_embed, data, settings.CHUNK_STRATEGY, redact_pii=redact_pii
+            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary, _pages = await asyncio.to_thread(
+                extract_and_embed, data, document.kind, settings.CHUNK_STRATEGY, redact_pii=redact_pii
             )
         except IngestError as exc:
             await _mark_failed(document_id, str(exc))

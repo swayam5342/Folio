@@ -185,8 +185,8 @@ async def prepare_corpus(db: AsyncSession, strategies: set[str]) -> dict[str, No
         await db.flush()
         for pdf in pdfs:
             data = pdf.read_bytes()
-            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary = await asyncio.to_thread(
-                extract_and_embed, data, strategy
+            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary, _pages = await asyncio.to_thread(
+                extract_and_embed, data, "pdf", strategy
             )
             document = Document(
                 notebook_id=notebook.id, filename=pdf.name, storage_path=f"eval/{pdf.name}", size_bytes=len(data),
