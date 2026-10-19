@@ -16,6 +16,11 @@ export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler
 }
 
+/** Used by non-standard transports such as POSTed SSE streams. */
+export function notifyUnauthorized() {
+  onUnauthorized?.()
+}
+
 function detailFrom(body: unknown, status: number): string {
   const detail = (body as { detail?: unknown } | null)?.detail
   if (typeof detail === 'string') return detail

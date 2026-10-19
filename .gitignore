@@ -17,3 +17,6 @@ claude.md
 # Agent scratch
 .superpowers/
 uploads/
+
+# Evaluation smoke runs (CI and local checks); full results are committed
+backend/eval/results/smoke/

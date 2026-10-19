@@ -3,7 +3,7 @@ import threading
 import time
 import uuid
 from collections import defaultdict, deque
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -33,7 +33,7 @@ def verify_password(password: str, password_hash: str | None) -> bool:
 
 
 def create_token(user_id: uuid.UUID) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {"sub": str(user_id), "iat": now, "exp": now + timedelta(days=settings.JWT_EXPIRE_DAYS)}
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=_ALGORITHM)
 

@@ -54,12 +54,15 @@ async def get_notebook(notebook: Notebook = Depends(get_owned_notebook), db: Asy
 
 
 @router.patch("/{notebook_id}", response_model=NotebookOut)
-async def rename_notebook(
+async def update_notebook(
     payload: NotebookUpdate,
     notebook: Notebook = Depends(get_owned_notebook),
     db: AsyncSession = Depends(get_db),
 ):
-    notebook.name = payload.name
+    if payload.name is not None:
+        notebook.name = payload.name
+    if payload.pii_redaction_enabled is not None:
+        notebook.pii_redaction_enabled = payload.pii_redaction_enabled
     notebook.touch()
     await db.commit()
     await db.refresh(notebook)

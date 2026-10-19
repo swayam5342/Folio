@@ -223,9 +223,9 @@ async def generate(
             raw = await llm.complete_json(messages, reasoning_effort=REASONING[kind])
             title, items = _validate(raw, kind, citation_map)
             break
-        except (llm.InvalidJSON, json.JSONDecodeError, ValueError):
+        except (llm.InvalidJSON, json.JSONDecodeError, ValueError) as exc:
             if attempt == 1:
-                raise GenerationFailed("Couldn't generate a good set — try again.")
+                raise GenerationFailed("Couldn't generate a good set — try again.") from exc
 
     if len(items) < (count + 1) // 2:
         raise GenerationFailed("Couldn't generate a good set — try again.")

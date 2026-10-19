@@ -5,22 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Folio — chat with your PDFs and get answers cited to the page." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&display=swap"
-      rel="stylesheet"
-    />
     <script>
-      // Apply the saved theme before first paint to avoid a flash.
+      // Apply the saved theme before first paint to avoid a flash. Mirrors src/lib/theme.ts.
       try {
-        const t = localStorage.getItem('folio-theme')
-        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
+        const root = document.documentElement
+        let pref = localStorage.getItem('folio-theme')
+        if (pref !== 'light' && pref !== 'dark' && pref !== 'aurora') {
+          pref = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        }
+        root.dataset.theme = pref
+        if (localStorage.getItem('folio-calm') === '1') root.setAttribute('data-calm', '')
       } catch {}
     </script>
     <title>Folio</title>
   </head>
-  <body>
+  <body class="grain">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

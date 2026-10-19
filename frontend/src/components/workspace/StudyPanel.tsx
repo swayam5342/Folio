@@ -4,13 +4,14 @@ import { ApiError } from '../../api/client'
 import { useCreateStudySet, useDeleteStudySet, useDocuments, useStudySet, useStudySets } from '../../api/queries'
 import type { Source, StudyKind, StudySetSummary } from '../../api/types'
 import { relativeTime } from '../../lib/format'
+import { useWorkspace } from '../../lib/workspace'
 import { AlertIcon, MoreIcon } from '../ui/icons'
 import { useConfirm, useToast } from '../ui/overlay'
 import { Button, IconButton, Menu, Spinner, cx } from '../ui/primitives'
 import FlashcardPlayer from './FlashcardPlayer'
 import QuizPlayer from './QuizPlayer'
 
-type View = { mode: 'list' } | { mode: 'new'; kind: StudyKind } | { mode: 'open'; id: string }
+type View = { mode: 'list' } | { mode: 'new'; kind: StudyKind; topic?: string; nonce?: number } | { mode: 'open'; id: string }
 
 const COUNTS: Record<StudyKind, number[]> = { quiz: [5, 10, 15], flashcards: [10, 20, 30] }
 const DEFAULT_COUNT: Record<StudyKind, number> = { quiz: 10, flashcards: 20 }
@@ -26,11 +27,14 @@ function plural(n: number, word: string) {
 function GenerateForm({
   notebookId,
   kind,
+  initialTopic,
   onCancel,
   onCreated,
 }: {
   notebookId: string
   kind: StudyKind
+  /** Prefilled focus topic, e.g. from the composer's "/quiz <topic>". */
+  initialTopic?: string
   onCancel: () => void
   onCreated: (id: string) => void
 }) {
@@ -38,7 +42,7 @@ function GenerateForm({
   const ready = (documents.data ?? []).filter((d) => d.status === 'ready')
   const create = useCreateStudySet(notebookId)
   const [selected, setSelected] = useState<string[] | null>(null) // null = all ready sources
-  const [topic, setTopic] = useState('')
+  const [topic, setTopic] = useState(initialTopic ?? '')
   const [count, setCount] = useState(DEFAULT_COUNT[kind])
   const [wait, setWait] = useState(0)
 
@@ -225,13 +229,19 @@ function OpenSet({ id, onOpenSource, onBack }: { id: string; onOpenSource: (s: S
 export default function StudyPanel({
   notebookId,
   switcher,
-  onOpenSource,
 }: {
   notebookId: string
   switcher: ReactNode
-  onOpenSource: (source: Source) => void
 }) {
+  const onOpenSource = useWorkspace((s) => s.openSource)
+  const studyRequest = useWorkspace((s) => s.studyRequest)
+  // "/quiz <topic>" or "/flashcards <topic>" from the composer or command palette opens the form.
   const [view, setView] = useState<View>({ mode: 'list' })
+  const [handled, setHandled] = useState<number | null>(null)
+  if (studyRequest && studyRequest.nonce !== handled) {
+    setHandled(studyRequest.nonce)
+    setView({ mode: 'new', kind: studyRequest.kind, topic: studyRequest.topic, nonce: studyRequest.nonce })
+  }
   const sets = useStudySets(notebookId)
   const remove = useDeleteStudySet(notebookId)
   const confirm = useConfirm()
@@ -268,8 +278,10 @@ export default function StudyPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {view.mode === 'new' ? (
           <GenerateForm
+            key={view.nonce ?? view.kind}
             notebookId={notebookId}
             kind={view.kind}
+            initialTopic={view.topic}
             onCancel={back}
             onCreated={(id) => setView({ mode: 'open', id })}
           />

@@ -42,9 +42,9 @@ async def create_study_set(
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
         return JSONResponse(status_code=429, content={"detail": exc.detail}, headers=headers)
     except llm.LLMError as exc:
-        raise HTTPException(status_code=502, detail=exc.detail)
+        raise HTTPException(status_code=502, detail=exc.detail) from exc
     except study.GenerationFailed as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     study_set = StudySet(
         notebook_id=notebook.id,

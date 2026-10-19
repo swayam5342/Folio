@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, ApiError, json } from './client'
-import type { Message, Notebook, SourceDocument, StudySet, StudySetCreate, StudySetSummary, User } from './types'
+import type { EvalResults, Message, Notebook, RetrievalTrace, SourceDocument, StudySet, StudySetCreate, StudySetSummary, User } from './types'
 
 export const keys = {
   me: ['me'] as const,
@@ -9,6 +9,8 @@ export const keys = {
   notebook: (id: string) => ['notebooks', id] as const,
   documents: (notebookId: string) => ['notebooks', notebookId, 'documents'] as const,
   messages: (notebookId: string) => ['notebooks', notebookId, 'messages'] as const,
+  trace: (messageId: string) => ['messages', messageId, 'trace'] as const,
+  evalResults: ['eval-results'] as const,
   studySets: (notebookId: string) => ['notebooks', notebookId, 'study-sets'] as const,
   studySet: (id: string) => ['study-sets', id] as const,
 }
@@ -89,6 +91,18 @@ export function useRenameNotebook() {
   })
 }
 
+export function useUpdateNotebookSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, piiRedactionEnabled }: { id: string; piiRedactionEnabled: boolean }) =>
+      api<Notebook>(`/notebooks/${id}`, { method: 'PATCH', ...json({ pii_redaction_enabled: piiRedactionEnabled }) }),
+    onSuccess: (nb) => {
+      qc.setQueryData(keys.notebook(nb.id), nb)
+      qc.setQueryData<Notebook[]>(keys.notebooks, (list) => list?.map((n) => (n.id === nb.id ? nb : n)))
+    },
+  })
+}
+
 export function useDeleteNotebook() {
   const qc = useQueryClient()
   return useMutation({
@@ -106,6 +120,7 @@ export const useDocuments = (notebookId: string) =>
   useQuery({
     queryKey: keys.documents(notebookId),
     queryFn: () => api<SourceDocument[]>(`/notebooks/${notebookId}/documents`),
+    enabled: !!notebookId,
     // Poll while anything is still being processed.
     refetchInterval: (q) => (q.state.data?.some((d) => d.status === 'processing') ? 2000 : false),
   })
@@ -136,6 +151,16 @@ export function useDeleteDocument(notebookId: string) {
   })
 }
 
+export function useReindexDocument(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<SourceDocument>(`/documents/${id}/reindex`, { method: 'POST' }),
+    onSuccess: (doc) => {
+      qc.setQueryData<SourceDocument[]>(keys.documents(notebookId), (list) => list?.map((d) => (d.id === doc.id ? doc : d)))
+    },
+  })
+}
+
 export const documentFileUrl = (id: string) => `/api/documents/${id}/file`
 
 // --- Messages -----------------------------------------------------------
@@ -146,6 +171,16 @@ export const useMessages = (notebookId: string) =>
     queryFn: () => api<Message[]>(`/notebooks/${notebookId}/messages`),
   })
 
+/** Retrieval trace of one answer; fetched only when the panel is opened. Traces never change. */
+export const useTrace = (messageId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.trace(messageId),
+    queryFn: () => api<RetrievalTrace>(`/messages/${messageId}/trace`),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
+  })
+
 export function useClearMessages(notebookId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -153,6 +188,16 @@ export function useClearMessages(notebookId: string) {
     onSuccess: () => qc.setQueryData<Message[]>(keys.messages(notebookId), []),
   })
 }
+
+// --- Evaluation -----------------------------------------------------------
+
+export const useEvalResults = () =>
+  useQuery({
+    queryKey: keys.evalResults,
+    queryFn: () => api<EvalResults>('/eval/results'),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
 
 // --- Study sets ---------------------------------------------------------
 

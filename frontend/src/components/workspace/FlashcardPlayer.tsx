@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FlashcardItem, Source, StudySet } from '../../api/types'
 import { ChevronLeft, ChevronRight } from '../ui/icons'
 import { Button, IconButton } from '../ui/primitives'
-import { CitationChip } from './AnswerText'
+import { CitationChip } from './CitationChip'
 
 function shuffled(n: number): number[] {
   const order = Array.from({ length: n }, (_, i) => i)

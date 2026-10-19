@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Document, Notebook, StudySet, User
+from app.models import Document, Message, Notebook, StudySet, User
 from app.security import SESSION_COOKIE, decode_token
 
 
@@ -61,3 +61,19 @@ async def get_owned_study_set(
     if study_set is None:
         raise HTTPException(status_code=404, detail="Study set not found")
     return study_set
+
+
+async def get_owned_message(
+    message_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    result = await db.execute(
+        select(Message)
+        .join(Notebook, Message.notebook_id == Notebook.id)
+        .where(Message.id == message_id, Notebook.user_id == user.id)
+    )
+    message = result.scalar_one_or_none()
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return message

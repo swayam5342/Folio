@@ -1,18 +1,18 @@
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import Column, Computed, String, Integer, ForeignKey, DateTime, Text, Enum
-from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
-from sqlalchemy.orm import deferred, relationship
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import Boolean, Column, Computed, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
+from sqlalchemy.orm import deferred, relationship
 
-from app.database import Base
 from app.config import settings
+from app.database import Base
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class DocumentStatus(str, enum.Enum):
@@ -50,6 +50,7 @@ class Notebook(Base):
     name = Column(String(120), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    pii_redaction_enabled = Column(Boolean, nullable=False, default=False)
 
     user = relationship("User", back_populates="notebooks")
     documents = relationship("Document", back_populates="notebook", cascade="all, delete-orphan", passive_deletes=True)
@@ -76,6 +77,11 @@ class Document(Base):
         default=DocumentStatus.processing,
     )
     error = Column(Text, nullable=True)
+    # How the current chunks were made ("fixed" / "structured"); null for documents indexed before v2.
+    chunk_strategy = Column(String(16), nullable=True)
+    risk_score = Column(Integer, nullable=False, default=0)
+    risk_reasons = Column(JSONB, nullable=False, default=list)
+    pii_summary = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="documents")
@@ -90,6 +96,12 @@ class Chunk(Base):
     page_number = Column(Integer, nullable=False)
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
+    section_title = Column(Text, nullable=True)  # heading the chunk sits under (structured chunking)
+    char_start = Column(Integer, nullable=True)  # position within the page's extracted text
+    char_end = Column(Integer, nullable=True)
+    risk_score = Column(Integer, nullable=False, default=0)
+    risk_reasons = Column(JSONB, nullable=False, default=list)
+    quarantined = Column(Boolean, nullable=False, default=False)
     embedding = Column(Vector(settings.EMBEDDING_DIM))
     # Maintained by Postgres for keyword search; never loaded or written by the app.
     content_tsv = deferred(Column(TSVECTOR, Computed("to_tsvector('english', content)", persisted=True)))
@@ -105,6 +117,10 @@ class Message(Base):
     role = Column(Enum(MessageRole, native_enum=False, length=16), nullable=False)
     content = Column(Text, nullable=False)
     sources = Column(JSONB, nullable=False, default=list)
+    confidence = Column(String(8), nullable=True)  # high | medium | low, for answers
+    abstained = Column(Boolean, nullable=False, default=False)
+    # Retrieval trace ("How was this answered?"); large, so only loaded by the trace endpoint.
+    trace = deferred(Column(JSONB, nullable=True))
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     notebook = relationship("Notebook", back_populates="messages")

@@ -1,0 +1,206 @@
+/*
+ * Folio design tokens: the single source of truth for color, depth, shape and motion.
+ *
+ * Themes are selected with <html data-theme="light|dark|aurora">. The inline script
+ * in index.html resolves the saved preference (or the OS setting) before first paint,
+ * and src/lib/theme.ts keeps it in sync afterwards, so data-theme is always present.
+ *
+ * Colors that carry text are solid hex so the contrast test (src/styles/tokens.test.ts)
+ * can verify WCAG AA for every theme. Translucent values are decoration only.
+ *
+ * Source colors: every source in a notebook gets one of eight hues (src/lib/sourceColors.ts).
+ *   --src-N       solid accent: dots, bars, borders, mind-map nodes  (>= 3:1 on surface)
+ *   --src-N-soft  tinted background: chips, card washes, highlights
+ *   --src-N-ink   text on the soft tint                              (>= 4.5:1)
+ */
+
+/* ---------------------------------------------------------------- shared */
+/* Tailwind theme values: utilities (rounded-card, blur-glass, ease-spring, shadow-float)
+   and CSS variables of the same name. `static` emits them even when no utility uses them. */
+@theme static {
+  --radius-chip: 6px;
+  --radius-control: 10px;
+  --radius-card: 18px;
+  --radius-panel: 26px;
+
+  --blur-glass: 18px;
+  --blur-heavy: 40px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --shadow-float: 0 1px 0 var(--glass-highlight) inset, 0 18px 40px -18px rgb(var(--shadow-color) / 0.35);
+  --shadow-lift: 0 1px 0 var(--glass-highlight) inset, 0 28px 60px -20px rgb(var(--shadow-color) / 0.5);
+  --shadow-glow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 28px -4px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+:root {
+  /* Motion durations. Mirrored in src/lib/motion.ts for Framer Motion. */
+  --dur-instant: 90ms;
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 350ms;
+
+  /* Layers: use as z-(--z-modal) */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-dropdown: 30;
+  --z-overlay: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-palette: 70;
+  --z-grain: 100;
+}
+
+/* ---------------------------------------------------------------- light */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --paper: #f6f3ec;
+  --surface: #fffdf9;
+  --sunken: #ece8de;
+  --ink: #16131f;
+  --muted: #4f4b5c;
+  --faint: #66627a;
+  --line: #ddd8cc;
+  --line-strong: #c3bdaf;
+  --focus: #6d28d9;
+
+  --accent: #6d28d9;
+  --accent-ink: #ffffff;
+  --accent-soft: #ede6ff;
+  --accent-2: #e5482f;
+
+  --highlight: #f5d93f;
+  --highlight-soft: #f9eb9a;
+  --highlight-ink: #16131f;
+
+  --danger: #b42318;
+  --danger-soft: #fde7e4;
+  --ok: #1f6b45;
+  --ok-soft: #dff1e6;
+  --warn: #8a4b04;
+  --warn-soft: #fff0d1;
+
+  --src-1: #7c3aed;  --src-1-soft: #efe7ff;  --src-1-ink: #5b21b6;
+  --src-2: #e0432a;  --src-2-soft: #ffe6e0;  --src-2-ink: #a3301b;
+  --src-3: #4d7c0f;  --src-3-soft: #e9f5d3;  --src-3-ink: #3f6212;
+  --src-4: #0e7490;  --src-4-soft: #daf3f9;  --src-4-ink: #155e75;
+  --src-5: #c2600a;  --src-5-soft: #ffefd2;  --src-5-ink: #8a4304;
+  --src-6: #db2777;  --src-6-soft: #fde4f0;  --src-6-ink: #9d174d;
+  --src-7: #2563eb;  --src-7-soft: #e1eaff;  --src-7-ink: #1d4ed8;
+  --src-8: #0f766e;  --src-8-soft: #d6f3ee;  --src-8-ink: #115e59;
+
+  /* Decoration */
+  --shadow-color: 35 25 70;
+  --glass-bg: rgb(255 253 249 / 0.72);
+  --glass-border: rgb(255 255 255 / 0.65);
+  --glass-highlight: rgb(255 255 255 / 0.9);
+  --mesh-1: #c4b5fd;
+  --mesh-2: #fdba9f;
+  --mesh-3: #bef264;
+  --mesh-4: #a5f3fc;
+  --mesh-opacity: 0.55;
+  --grain-opacity: 0.05;
+}
+
+/* ---------------------------------------------------------------- dark */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --paper: #121019;
+  --surface: #1a1724;
+  --sunken: #0d0b13;
+  --ink: #ece9f4;
+  --muted: #ada8bd;
+  --faint: #8f8aa1;
+  --line: #2b2738;
+  --line-strong: #3d3850;
+  --focus: #b9a2ff;
+
+  --accent: #a78bfa;
+  --accent-ink: #160f2b;
+  --accent-soft: #2a2145;
+  --accent-2: #ff7a63;
+
+  --highlight: #e6c93a;
+  --highlight-soft: #4a4120;
+  --highlight-ink: #121019;
+
+  --danger: #f59a8f;
+  --danger-soft: #3a1d1c;
+  --ok: #7fd3a0;
+  --ok-soft: #18301f;
+  --warn: #fcd77a;
+  --warn-soft: #3a2c10;
+
+  --shadow-color: 0 0 0;
+  --glass-bg: rgb(26 23 36 / 0.7);
+  --glass-border: rgb(255 255 255 / 0.08);
+  --glass-highlight: rgb(255 255 255 / 0.12);
+  --mesh-1: #4c1d95;
+  --mesh-2: #7c2d12;
+  --mesh-3: #134e4a;
+  --mesh-4: #1e3a8a;
+  --mesh-opacity: 0.5;
+  --grain-opacity: 0.07;
+}
+
+/* ---------------------------------------------------------------- aurora */
+/* The bold theme: midnight violet ground, acid-lime accent, hot-pink marker. */
+:root[data-theme='aurora'] {
+  color-scheme: dark;
+
+  --paper: #0a0716;
+  --surface: #140f2a;
+  --sunken: #070512;
+  --ink: #f4f0ff;
+  --muted: #bdb4e0;
+  --faint: #9a91c0;
+  --line: #2a2250;
+  --line-strong: #3f3575;
+  --focus: #c4f542;
+
+  --accent: #c4f542;
+  --accent-ink: #0a0716;
+  --accent-soft: #263212;
+  --accent-2: #ff5fa2;
+
+  --highlight: #ff5fa2;
+  --highlight-soft: #4a1834;
+  --highlight-ink: #0a0716;
+
+  --danger: #ff8a7a;
+  --danger-soft: #3d1420;
+  --ok: #6ff0b0;
+  --ok-soft: #10302a;
+  --warn: #ffd66b;
+  --warn-soft: #3a2a0c;
+
+  --shadow-color: 40 10 90;
+  --glass-bg: rgb(20 15 42 / 0.62);
+  --glass-border: rgb(196 245 66 / 0.14);
+  --glass-highlight: rgb(255 255 255 / 0.14);
+  --mesh-1: #7c3aed;
+  --mesh-2: #db2777;
+  --mesh-3: #65a30d;
+  --mesh-4: #0891b2;
+  --mesh-opacity: 0.6;
+  --grain-opacity: 0.09;
+}
+
+/* Source hues on dark grounds: brighter solids, deep tints, light inks. */
+:root[data-theme='dark'],
+:root[data-theme='aurora'] {
+  --src-1: #a78bfa;  --src-1-soft: #2a2145;  --src-1-ink: #cbb8ff;
+  --src-2: #ff7a63;  --src-2-soft: #3d211c;  --src-2-ink: #ffb4a5;
+  --src-3: #a3e635;  --src-3-soft: #253313;  --src-3-ink: #c9f27d;
+  --src-4: #22d3ee;  --src-4-soft: #10303a;  --src-4-ink: #8ce8f7;
+  --src-5: #fbbf24;  --src-5-soft: #3a2c10;  --src-5-ink: #fcd77a;
+  --src-6: #f472b6;  --src-6-soft: #3d1a2c;  --src-6-ink: #f9a8d4;
+  --src-7: #60a5fa;  --src-7-soft: #172a48;  --src-7-ink: #a9cbfd;
+  --src-8: #2dd4bf;  --src-8-soft: #10332f;  --src-8-ink: #8beadb;
+}
