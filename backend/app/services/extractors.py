@@ -128,7 +128,10 @@ def _docx_pages(data: bytes) -> list[dict]:
             text = paragraph.text.strip()
             if not text:
                 continue
-            style = (paragraph.style.name if paragraph.style is not None else "") or ""
+            try:
+                style = (paragraph.style.name if paragraph.style is not None else "") or ""
+            except (KeyError, AttributeError, ValueError):  # a style the document references but doesn't define
+                style = ""
             heading = style == "Title" or style.startswith("Heading")
             blocks.append({"kind": "heading" if heading else "body", "text": text})
         elif tag == "tbl":
