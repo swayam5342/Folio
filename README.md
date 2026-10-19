@@ -37,9 +37,24 @@ started with one `docker compose up`.
   partially uncited answers. Hovering a numbered citation shows the source snippet; clicking opens the
   page in the built-in PDF viewer with the passage highlighted.
 - **Quizzes and flashcards.** Generate a multiple-choice quiz (5, 10 or 15
-  questions) or a flashcard deck (10, 20 or 30 cards) from chosen sources and
-  an optional focus topic. Every question and card cites its page; sets and
-  quiz scores are saved per notebook.
+  questions, easy / medium / hard) or a flashcard deck (10, 20 or 30 cards)
+  from chosen sources and an optional focus topic. Every question and card
+  cites its source; sets and quiz scores are saved per notebook. After a quiz,
+  **Review mistakes** replays only the questions you got wrong; flashcards can
+  be marked *Got it* / *Still learning* and the missed ones reviewed again.
+  Decks export to **Anki** (tab-separated import file) or **CSV**.
+- **Studio.** One click writes a **study guide**, **FAQ**, **timeline** or
+  **glossary** from the sources, every item with a citation chip that opens the
+  passage. A timeline is refused politely when the sources have no dated or
+  ordered events. Any studio document can be copied or saved to notes.
+- **Notebook overview.** Before the first question, the chat shows each
+  source's summary and suggested questions (written with the summary, no extra
+  LLM call) that you can click to ask.
+- **Chats and notes.** A notebook can hold several chat threads (each named
+  after its first question; rename, clear or delete). The latest answer can be
+  **regenerated** (skipping the answer cache), any answer **copied with its
+  source list**, or **saved to notes**: saved answers keep working citation
+  chips, and you can write your own notes too.
 - **Exact-term search.** Retrieval combines meaning-based vector search with
   keyword search, so course codes and function names find the right page.
 - **Smarter retrieval.** Follow-ups ("why is it slower?") are rewritten into
@@ -75,6 +90,12 @@ started with one `docker compose up`.
   turns are sent with each question, so "tell me more about that" works.
 - **Grounded by design.** The model is instructed to answer only from the
   retrieved excerpts and to say so when they don't contain the answer.
+- **PDF viewer toolbar.** Page jump, zoom (50–300 %), search inside the PDF
+  (every matching page listed, matches highlighted), a sidebar of lazily
+  rendered page thumbnails or the PDF's own contents, and download.
+- **Live indexing progress.** While a source is processed the Sources panel
+  shows what is happening: "Reading page 12 of 240", "OCR on page 3 of 40",
+  "Embedding 96 of 480 passages", with a progress bar.
 - **Production touches.** Hashed passwords, httpOnly session cookies, login
   rate limiting, database migrations, upload validation, graceful handling of
   the LLM's free-tier rate limits, and a mobile layout.
@@ -395,10 +416,16 @@ matches the `request_id` in the server logs.
 | `GET` | `/documents/{id}/file` | The original file (PDFs inline, others as a download) |
 | `GET` | `/documents/{id}/pages` | Page text of a non-PDF source with block offsets, for the reader view |
 | `POST` | `/documents/{id}/reindex` | Re-chunk and re-embed with the current `CHUNK_STRATEGY` (`409` while processing) |
-| `GET` `DELETE` | `/notebooks/{id}/messages` | Chat history / clear chat |
-| `POST` | `/notebooks/{id}/chat` | Ask a question (`{"question", "document_ids"?}`); streams `stage` and `token` events, then `done` or `error` |
+| `GET` `POST` | `/notebooks/{id}/threads` | List (most recent first) / create chat threads |
+| `PATCH` `DELETE` | `/threads/{id}` | Rename / delete a thread |
+| `GET` `DELETE` | `/threads/{id}/messages` | A thread's messages / clear it |
+| `DELETE` | `/messages/{id}` | Remove a thread's latest message (before regenerating; `409` otherwise) |
+| `GET` `DELETE` | `/notebooks/{id}/messages` | Every message in the notebook / clear all |
+| `POST` | `/notebooks/{id}/chat` | Ask a question (`{"question", "document_ids"?, "thread_id"?, "regenerate"?}`); streams `stage` and `token` events, then `done` or `error` |
+| `GET` `POST` | `/notebooks/{id}/notes` | List / create notes (`{"title", "content", "sources"?}`) |
+| `PATCH` `DELETE` | `/notes/{id}` | Edit / delete a note |
 | `GET` | `/messages/{id}/trace` | Retrieval trace of an answer: queries, candidates with all scores, timings, tokens |
-| `GET` `POST` | `/notebooks/{id}/study-sets` | List / generate quizzes and flashcard decks |
+| `GET` `POST` | `/notebooks/{id}/study-sets` | List / generate quizzes, flashcards, study guides, FAQs, timelines and glossaries (`{"kind", "count", "difficulty"?, "topic"?, "document_ids"?}`) |
 | `GET` `DELETE` | `/study-sets/{id}` | Open / delete a study set |
 | `POST` | `/study-sets/{id}/score` | Save a quiz score |
 | `GET` | `/eval/results` | Latest evaluation summary (public; sample corpus only) |
@@ -417,7 +444,7 @@ backend/                   FastAPI backend (Python, managed with uv)
     models.py              User, Notebook, Document, Chunk, Message
     security.py            password hashing, session tokens, login rate limit
     deps.py                current user + ownership checks
-    routers/               auth, notebooks, documents, chat
+    routers/               auth, notebooks, documents, chat, threads, notes, study
     services/
       ingest.py            background processing: extract → sanitize → chunk → embed
       extractors.py        every source kind → pages of blocks; upload validation
@@ -431,7 +458,8 @@ backend/                   FastAPI backend (Python, managed with uv)
       reranker.py          local cross-encoder
       pipeline.py          plan → search → rerank → confidence gate, trace
       ocr.py               OCR for pages without a text layer
-      study.py             quiz and flashcard generation
+      study.py             quizzes, flashcards and studio documents (guide, FAQ, timeline, glossary)
+      progress.py          live indexing progress (in memory)
       llm.py               prompt, Groq streaming, citation parsing
       storage.py           uploaded files (and reader text) on disk
   eval/                    evaluation harness
@@ -513,7 +541,7 @@ durable queues and per-user quotas, rotate secrets, and monitor abuse.
 - No password reset or email verification.
 - One backend process: the login rate limiter is in memory and files live on
   a local volume, so it isn't set up for multiple servers.
-- One chat thread per notebook; notebooks can't be shared between users.
+- Notebooks can't be shared between users.
 - Groq's free tier has rate limits; when hit, the app shows how long to wait.
   Query planning adds one small call per question (skipped when unnecessary
   and cached).
