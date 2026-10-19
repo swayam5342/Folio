@@ -223,8 +223,9 @@ export function useCreateThread(notebookId: string) {
   return useMutation({
     mutationFn: () => api<ChatThread>(`/notebooks/${notebookId}/threads`, { method: 'POST', ...json({}) }),
     onSuccess: (thread) => {
-      qc.setQueryData<ChatThread[]>(keys.threads(notebookId), (list = []) => [thread, ...list])
-      qc.setQueryData<Message[]>(keys.threadMessages(thread.id), [])
+      // The server may hand back an existing empty chat instead of a new one.
+      qc.setQueryData<ChatThread[]>(keys.threads(notebookId), (list = []) => [thread, ...list.filter((t) => t.id !== thread.id)])
+      qc.setQueryData<Message[]>(keys.threadMessages(thread.id), (messages) => messages ?? [])
     },
   })
 }

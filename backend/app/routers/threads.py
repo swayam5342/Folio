@@ -2,7 +2,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -33,6 +33,19 @@ async def list_threads(notebook: Notebook = Depends(get_owned_notebook), db: Asy
 async def create_thread(
     payload: ThreadCreate, notebook: Notebook = Depends(get_owned_notebook), db: AsyncSession = Depends(get_db)
 ):
+    """A new chat, or the notebook's existing still-empty one, so unused "New chat"s don't pile up."""
+    if payload.title is None:
+        empty = await db.scalar(
+            select(Thread)
+            .where(Thread.notebook_id == notebook.id, ~exists().where(Message.thread_id == Thread.id))
+            .order_by(Thread.updated_at.desc())
+            .limit(1)
+        )
+        if empty is not None:
+            empty.updated_at = utcnow()  # move it to the top of the list
+            await db.commit()
+            await db.refresh(empty)
+            return empty
     thread = Thread(notebook_id=notebook.id, title=payload.title or NEW_THREAD_TITLE)
     db.add(thread)
     await db.commit()
