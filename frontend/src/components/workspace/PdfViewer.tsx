@@ -122,7 +122,7 @@ export default function PdfViewer({
 }) {
   const [numPages, setNumPages] = useState<number>(0)
   const [page, setPage] = useState(target.page)
-  const [pageInput, setPageInput] = useState(String(target.page))
+  const [pageInput, setPageInput] = useState<string | null>(null) // text being typed; null = show the current page
   const [zoom, setZoom] = useState(1)
   const [sidebar, setSidebar] = useState<'pages' | 'contents' | null>(null)
   const [hasOutline, setHasOutline] = useState(false)
@@ -145,8 +145,6 @@ export default function PdfViewer({
     observer.current.observe(el)
   }, [])
   useEffect(() => () => observer.current?.disconnect(), [])
-
-  useEffect(() => setPageInput(String(page)), [page])
 
   const file = useMemo(
     () => ({ url: documentFileUrl(target.documentId), withCredentials: true }),
@@ -193,8 +191,8 @@ export default function PdfViewer({
   const jump = (e: FormEvent) => {
     e.preventDefault()
     const n = Number(pageInput)
-    if (Number.isFinite(n) && n >= 1) goTo(Math.round(n))
-    else setPageInput(String(page))
+    if (pageInput && Number.isFinite(n) && n >= 1) goTo(Math.round(n))
+    setPageInput(null)
   }
 
   const zoomBy = (step: number) => {
@@ -259,7 +257,7 @@ export default function PdfViewer({
         </IconButton>
         <form onSubmit={jump} className="flex items-center gap-1 text-muted">
           <input
-            value={pageInput}
+            value={pageInput ?? String(page)}
             onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ''))}
             onBlur={jump}
             inputMode="numeric"

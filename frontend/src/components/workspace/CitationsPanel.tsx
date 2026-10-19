@@ -33,7 +33,12 @@ function Group({ filename, items, onOpen }: { filename: string; items: Cited[]; 
                   {n}
                 </span>
                 {isPaged(source) && <span className="font-medium capitalize">{sourceLocationLong(source)}</span>}
-                {source.section_title && <span className="min-w-0 truncate text-muted">· {source.section_title}</span>}
+                {source.section_title && (
+                  <span className="min-w-0 truncate text-muted">
+                    {isPaged(source) ? '· ' : ''}
+                    {source.section_title}
+                  </span>
+                )}
                 {typeof source.score === 'number' && (
                   <span className="ml-auto shrink-0 font-mono text-muted" title="Relevance to the question">
                     {source.score.toFixed(2)}

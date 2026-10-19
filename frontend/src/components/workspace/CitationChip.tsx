@@ -1,7 +1,7 @@
 import { TriangleAlert } from 'lucide-react'
 import { motion } from 'motion/react'
 import { HoverCard } from 'radix-ui'
-import { useState, type MouseEvent } from 'react'
+import { useRef, useState, type MouseEvent } from 'react'
 
 import type { Source } from '../../api/types'
 import type { Citation } from '../../lib/citations'
@@ -60,6 +60,9 @@ export function CitationChip({
   const { n, source } = citation
   const color = useSourceColor(source?.document_id)
   const [open, setOpen] = useState(false)
+  // Set by a click: the hover card's open timer (started when the pointer entered) may still fire
+  // after the click, and the viewer opening shifts the chip away, so no "leave" would ever close it.
+  const suppressed = useRef(false)
 
   if (!source) {
     return (
@@ -72,16 +75,27 @@ export function CitationChip({
   const low = source.support === 'low'
   const click = (e: MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
+    suppressed.current = true
+    setOpen(false)
     onOpen?.(source, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
   }
 
   return (
-    <HoverCard.Root open={open} onOpenChange={setOpen} openDelay={150} closeDelay={80}>
+    <HoverCard.Root
+      open={open}
+      onOpenChange={(next) => setOpen(next && suppressed.current ? false : next)}
+      openDelay={150}
+      closeDelay={80}
+    >
       <HoverCard.Trigger asChild>
         <button
           type="button"
           onClick={click}
-          onFocus={() => setOpen(true)}
+          onPointerEnter={() => {
+            suppressed.current = false
+          }}
+          // Keyboard focus shows the card; a mouse click (which also focuses) shouldn't pin it open.
+          onFocus={(e) => e.currentTarget.matches(':focus-visible') && setOpen(true)}
           onBlur={() => setOpen(false)}
           style={sourceColorStyle(color)}
           aria-label={`Source ${n}: ${sourceLabel(source)}${low ? ' (low support)' : ''}`}

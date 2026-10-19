@@ -157,13 +157,6 @@ function Queries({ trace }: { trace: Trace }) {
           <dd className="mt-0.5 italic text-muted">{trace.hypothetical}</dd>
         </div>
       )}
-      {trace.cached && (
-        <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2 py-1.5 text-xs text-accent">
-          <Zap aria-hidden size={13} />
-          Answered from cache: this question was asked before over the same sources. The scores and timings below are the
-          original answer’s.
-        </div>
-      )}
       {trace.planner.error && (
         <div className="text-xs text-warn">Query rewriting was skipped ({trace.planner.error}); the question was searched as asked.</div>
       )}
@@ -272,6 +265,13 @@ export function TraceView({ trace, onOpen }: { trace: Trace; onOpen: OpenSource 
   const off = Object.entries(trace.features).filter(([, on]) => !on).map(([name]) => name.replace(/_/g, ' '))
   return (
     <div className="space-y-6">
+      {trace.cached && (
+        <div className="flex items-start gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-xs text-accent">
+          <Zap aria-hidden size={13} className="mt-px shrink-0" />
+          Answered instantly from the cache: this question was asked before over the same sources. The scores and
+          timings below are from the original answer.
+        </div>
+      )}
       <Section title="Confidence">
         <ConfidenceMeter trace={trace} />
       </Section>

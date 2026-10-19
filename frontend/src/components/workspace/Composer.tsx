@@ -9,6 +9,7 @@ import {
   parseComposer,
   summarizeQuestion,
 } from '../../lib/commands'
+import { countLabel, KIND_LABEL } from '../../lib/sourceLocation'
 import { sourceColorStyle } from '../../lib/sourceColors'
 import { useSourceColors } from '../../lib/useSourceColors'
 import { useWorkspace } from '../../lib/workspace'
@@ -91,7 +92,7 @@ export default function Composer({
           .map((d) => ({
             id: d.id,
             label: d.filename,
-            hint: `${d.page_count} pages`,
+            hint: d.kind === 'pdf' || d.kind === 'pptx' ? countLabel(d.page_count, d.kind === 'pptx' ? 'slide' : 'page') : KIND_LABEL[d.kind],
             color: colors.get(d.id),
             apply: () => {
               setMentions((m) => [...m, d.id])
@@ -201,8 +202,8 @@ export default function Composer({
                 ) : (
                   <Slash aria-hidden size={14} className="shrink-0 text-faint" />
                 )}
-                <span className="min-w-0 truncate font-medium">{o.label}</span>
-                <span className="ml-auto shrink-0 truncate text-xs text-muted">{o.hint}</span>
+                <span className="max-w-[60%] shrink-0 truncate font-medium">{o.label}</span>
+                <span className="ml-auto min-w-0 truncate text-right text-xs text-muted">{o.hint}</span>
               </li>
             ))}
           </ul>

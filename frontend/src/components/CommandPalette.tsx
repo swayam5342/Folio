@@ -1,18 +1,24 @@
 import { Command } from 'cmdk'
 import {
   Activity,
+  BookA,
   BookOpen,
   CheckSquare,
   FileText,
   FlaskConical,
   Layers,
   ListTree,
+  HelpCircle,
   MessageSquare,
+  MessageSquarePlus,
+  Milestone,
   Moon,
+  NotebookPen,
   NotebookText,
   Palette,
   PanelLeft,
   PanelRight,
+  ScrollText,
   Sparkles,
   Sun,
   Upload,
@@ -22,7 +28,7 @@ import {
 import { useEffect, useState } from 'react'
 import { useMatch, useNavigate } from 'react-router'
 
-import { useDocuments, useNotebooks } from '../api/queries'
+import { useCreateThread, useDocuments, useNotebooks } from '../api/queries'
 import { sourceColorStyle } from '../lib/sourceColors'
 import { useTheme, type ThemePref } from '../lib/theme'
 import { useSourceColors } from '../lib/useSourceColors'
@@ -66,6 +72,7 @@ function useWorkspaceItems(notebookId: string | undefined, search: string): Item
   const documents = useDocuments(notebookId ?? '')
   const colors = useSourceColors(notebookId ?? '')
   const ws = useWorkspace()
+  const createThread = useCreateThread(notebookId ?? '')
   if (!notebookId) return []
   const docs = documents.data ?? []
   const ready = docs.filter((d) => d.status === 'ready')
@@ -86,8 +93,20 @@ function useWorkspaceItems(notebookId: string | undefined, search: string): Item
   return [
     { id: 'ask', label: 'Ask a question', group: 'Actions', icon: MessageSquare, run: ws.focusComposer, hint: 'Chat' },
     { id: 'upload', label: 'Add a source (PDF, Word, PowerPoint, text)', group: 'Actions', icon: Upload, run: ws.requestUpload },
+    {
+      id: 'new-chat',
+      label: 'New chat',
+      group: 'Actions',
+      icon: MessageSquarePlus,
+      keywords: ['thread', 'conversation'],
+      run: () => createThread.mutate(undefined, { onSuccess: (t) => ws.setThread(t.id) }),
+    },
     { id: 'quiz', label: 'New quiz', group: 'Actions', icon: FlaskConical, run: () => ws.requestStudy('quiz') },
     { id: 'flashcards', label: 'New flashcards', group: 'Actions', icon: Layers, run: () => ws.requestStudy('flashcards') },
+    { id: 'study-guide', label: 'New study guide', group: 'Actions', icon: ScrollText, run: () => ws.requestStudy('study_guide') },
+    { id: 'faq', label: 'New FAQ', group: 'Actions', icon: HelpCircle, run: () => ws.requestStudy('faq') },
+    { id: 'timeline', label: 'New timeline', group: 'Actions', icon: Milestone, run: () => ws.requestStudy('timeline') },
+    { id: 'glossary', label: 'New glossary', group: 'Actions', icon: BookA, run: () => ws.requestStudy('glossary') },
     { id: 'inspector', label: 'Open Retrieval Inspector', group: 'Actions', icon: Activity, run: () => ws.inspect(null), keywords: ['trace', 'how'] },
     { id: 'citations', label: 'Show citations of the latest answer', group: 'Actions', icon: ListTree, run: () => ws.inspect(null, 'citations') },
     { id: 'select-all', label: 'Search all sources', group: 'Actions', icon: CheckSquare, run: () => ws.setExcluded(new Set()), keywords: ['select', 'include'] },
@@ -95,6 +114,7 @@ function useWorkspaceItems(notebookId: string | undefined, search: string): Item
     { id: 'toggle-right', label: ws.rightOpen ? 'Hide viewer pane' : 'Show viewer pane', group: 'Layout', icon: PanelRight, run: () => ws.setRightOpen(!ws.rightOpen) },
     { id: 'study', label: 'Switch to Study', group: 'Layout', icon: BookOpen, run: () => ws.setCenter('study') },
     { id: 'chat', label: 'Switch to Chat', group: 'Layout', icon: MessageSquare, run: () => ws.setCenter('chat') },
+    { id: 'notes', label: 'Switch to Notes', group: 'Layout', icon: NotebookPen, run: () => ws.setCenter('notes') },
     ...ready.map((d) => ({
       id: `source:${d.id}`,
       label: d.filename,

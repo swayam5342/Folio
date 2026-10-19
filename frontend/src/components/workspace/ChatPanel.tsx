@@ -132,20 +132,22 @@ function AssistantMessage({
       )}
       {!streaming && markdown.trim() && (
         <div className="mt-2 -ml-2 flex flex-wrap items-center gap-1">
-          <CopyButton label="Copy answer" text={() => copyText(markdown, citations)} />
+          <CopyButton label="Copy" text={() => copyText(markdown, citations)} />
           {onSaveNote && !abstained && (
             <button
               type="button"
               onClick={onSaveNote}
+              title="Save this answer to Notes"
               className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition-colors hover:bg-sunken hover:text-ink"
             >
-              <BookmarkPlus aria-hidden size={13} /> Save to notes
+              <BookmarkPlus aria-hidden size={13} /> Save
             </button>
           )}
           {onRegenerate && (
             <button
               type="button"
               onClick={onRegenerate}
+              title="Write a fresh answer to this question"
               className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition-colors hover:bg-sunken hover:text-ink"
             >
               <RefreshCw aria-hidden size={13} /> Regenerate
@@ -181,6 +183,8 @@ function AssistantMessage({
   )
 }
 
+const OVERVIEW_SHOWN = 3
+
 /** Up to four suggested questions, taken in turn from each source so every source is represented. */
 function suggestedQuestions(docs: SourceDocument[]): string[] {
   const lists = docs.map((d) => d.suggested_questions ?? []).filter((l) => l.length)
@@ -194,16 +198,18 @@ function suggestedQuestions(docs: SourceDocument[]): string[] {
 /** "What's in this notebook": each source's summary, shown before the first question. */
 function NotebookOverview({ docs }: { docs: SourceDocument[] }) {
   const colors = useSourceColors(docs[0]?.notebook_id ?? '')
+  const [all, setAll] = useState(false)
   const summarized = docs.filter((d) => d.summary)
   const pending = docs.some((d) => d.summary_status === 'pending')
   if (!summarized.length && !pending) return null
+  const shown = all ? summarized : summarized.slice(0, OVERVIEW_SHOWN)
   return (
     <div className="mt-6 rounded-lg border border-line bg-surface p-4">
       <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
         <Sparkles aria-hidden size={13} /> Notebook overview
       </p>
       <ul className="mt-3 space-y-3">
-        {summarized.map((d) => (
+        {shown.map((d) => (
           <li key={d.id} className="line-clamp-2 text-sm leading-relaxed" title={d.summary ?? undefined}>
             <span
               className="mr-1.5 inline-block size-2 rounded-full align-middle"
@@ -215,6 +221,15 @@ function NotebookOverview({ docs }: { docs: SourceDocument[] }) {
           </li>
         ))}
       </ul>
+      {summarized.length > OVERVIEW_SHOWN && (
+        <button
+          type="button"
+          onClick={() => setAll((v) => !v)}
+          className="mt-3 text-xs font-medium text-ink underline-offset-2 hover:underline"
+        >
+          {all ? 'Show fewer' : `Show all ${summarized.length} sources`}
+        </button>
+      )}
       {pending && <p className={cx('text-xs italic text-faint', summarized.length > 0 && 'mt-3')}>Summarizing new sources…</p>}
     </div>
   )
@@ -264,8 +279,11 @@ export default function ChatPanel({
   // Follow the stream unless the reader scrolled up.
   useLayoutEffect(() => {
     const el = scroller.current
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight
-  }, [active.messages, pending?.text, pending?.error, pending?.stage, pending?.retrieval])
+    if (!el) return
+    // An empty chat shows its heading, suggestions and overview from the top.
+    if (!active.messages.length && !pending) el.scrollTop = 0
+    else if (stickToBottom.current) el.scrollTop = el.scrollHeight
+  }, [active.messages, pending, pending?.text, pending?.error, pending?.stage, pending?.retrieval])
 
   const threadId = active.threadId
   const ask = async (question: string, scope: string[] | null, regenerate = false) => {

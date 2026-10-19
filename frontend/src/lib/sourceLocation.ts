@@ -39,3 +39,6 @@ export const UPLOAD_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.txt', '.md', '.mar
 
 /** PDFs and decks are located by page/slide (the section is extra detail); other kinds by section only. */
 export const isPaged = (s: { document_kind?: SourceKind | null }) => (s.document_kind ?? 'pdf') === 'pdf' || s.document_kind === 'pptx'
+
+/** "1 page", "12 slides". */
+export const countLabel = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
