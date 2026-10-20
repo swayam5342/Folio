@@ -2,6 +2,7 @@ import { TriangleAlert } from 'lucide-react'
 
 import type { Message, Source } from '../../api/types'
 import { prepareAnswer } from '../../lib/citations'
+import { formatScore } from '../../lib/scores'
 import { sourceColorStyle } from '../../lib/sourceColors'
 import { useSourceColor } from '../../lib/useSourceColors'
 import type { OpenSource } from './CitationChip'
@@ -39,10 +40,20 @@ function Group({ filename, items, onOpen }: { filename: string; items: Cited[]; 
                     {source.section_title}
                   </span>
                 )}
-                {typeof source.score === 'number' && (
-                  <span className="ml-auto shrink-0 font-mono text-muted" title="Relevance to the question">
-                    {source.score.toFixed(2)}
+                {typeof source.support_score === 'number' ? (
+                  <span className="ml-auto shrink-0 font-mono text-muted" title="How well this passage supports the sentence citing it">
+                    support {formatScore(source.support_score)}
                   </span>
+                ) : typeof source.similarity === 'number' ? (
+                  <span className="ml-auto shrink-0 font-mono text-muted" title="How close this passage is to the question in meaning">
+                    match {formatScore(source.similarity)}
+                  </span>
+                ) : (
+                  typeof source.score === 'number' && (
+                    <span className="ml-auto shrink-0 font-mono text-muted" title="Relevance to the question">
+                      {formatScore(source.score)}
+                    </span>
+                  )
                 )}
               </span>
               <span className="mt-1.5 line-clamp-3 block text-sm text-muted">{source.snippet}</span>

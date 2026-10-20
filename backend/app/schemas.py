@@ -150,6 +150,7 @@ class SourceOut(BaseModel):
     char_start: int | None = None  # the chunk's range in the page text served by /documents/{id}/pages
     char_end: int | None = None
     snippet: str
+    similarity: float | None = None  # embedding similarity of question and passage (0-1)
     score: float | None = None  # relevance to the question: reranker score (0-1), else cosine similarity
     support: Literal["ok", "low"] | None = None  # does the excerpt support the claims citing it?
     support_score: float | None = None

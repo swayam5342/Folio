@@ -10,6 +10,7 @@ import { sourceColorStyle } from '../../lib/sourceColors'
 import { highlightSegments } from '../../lib/terms'
 import { useSourceColor } from '../../lib/useSourceColors'
 import { cx } from '../ui/primitives'
+import { formatScore, rerankBar } from '../../lib/scores'
 import { isPaged, sourceLabel, sourceLocation } from '../../lib/sourceLocation'
 
 export type OpenSource = (source: Source, origin?: { x: number; y: number }) => void
@@ -30,14 +31,52 @@ function Snippet({ text, terms }: { text: string; terms: string[] }) {
   )
 }
 
-function Relevance({ score }: { score: number }) {
+function ScoreBar({ label, hint, value, width }: { label: string; hint: string; value: string; width: number }) {
   return (
-    <span className="mt-3 flex items-center gap-2 text-xs text-muted">
-      <span className="shrink-0">Relevance</span>
+    <span className="flex items-center gap-2 text-xs text-muted" title={hint}>
+      <span className="w-24 shrink-0">{label}</span>
       <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken" aria-hidden>
-        <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(score * 100, 3)}%` }} />
+        <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(width * 100, 3)}%` }} />
       </span>
-      <span className="font-mono tabular-nums text-ink">{score.toFixed(2)}</span>
+      <span className="w-9 text-right font-mono tabular-nums text-ink">{value}</span>
+    </span>
+  )
+}
+
+/**
+ * The scores that mean something for a citation: how well the passage supports the claim citing
+ * it (citation check), and how close it is to the question in meaning (embedding similarity).
+ * Older answers without either fall back to the reranker relevance.
+ */
+function CitationScores({ source }: { source: Source }) {
+  const support = source.support_score
+  const similarity = source.similarity
+  if (typeof support !== 'number' && typeof similarity !== 'number') {
+    if (typeof source.score !== 'number') return null
+    return (
+      <span className="mt-3 block">
+        <ScoreBar label="Relevance" hint="Relevance to the question" value={formatScore(source.score)} width={source.score} />
+      </span>
+    )
+  }
+  return (
+    <span className="mt-3 block space-y-1.5">
+      {typeof support === 'number' && (
+        <ScoreBar
+          label="Supports claim"
+          hint="How well this passage backs the sentence that cites it (local cross-encoder check)"
+          value={formatScore(support)}
+          width={rerankBar(support)}
+        />
+      )}
+      {typeof similarity === 'number' && (
+        <ScoreBar
+          label="Question match"
+          hint="How close this passage is to the question in meaning (embedding similarity)"
+          value={formatScore(similarity)}
+          width={similarity}
+        />
+      )}
     </span>
   )
 }
@@ -127,7 +166,7 @@ export function CitationChip({
             <span className="mt-2 line-clamp-5 block border-l-2 border-[var(--src)] pl-2.5 text-muted">
               <Snippet text={source.snippet} terms={terms} />
             </span>
-            {typeof source.score === 'number' && <Relevance score={source.score} />}
+            <CitationScores source={source} />
             {low && (
               <span className="mt-3 flex gap-2 rounded-md bg-warn-soft px-2.5 py-2 text-xs text-warn">
                 <TriangleAlert aria-hidden size={14} className="mt-px shrink-0" />

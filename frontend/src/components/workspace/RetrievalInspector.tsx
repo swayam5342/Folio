@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react'
 import { useTrace } from '../../api/queries'
 import type { Confidence, RetrievalTrace as Trace, Source, TraceCandidate } from '../../api/types'
 import { spring } from '../../lib/motion'
+import { formatScore, rerankBar } from '../../lib/scores'
 import { sourceColorStyle } from '../../lib/sourceColors'
 import { useSourceColor } from '../../lib/useSourceColors'
 import { Spinner, cx } from '../ui/primitives'
@@ -182,6 +183,8 @@ const asSource = (c: TraceCandidate): Source => ({
 function CandidateRow({ c, rank, reranked, onOpen }: { c: TraceCandidate; rank: number; reranked: boolean; onOpen: OpenSource }) {
   const color = useSourceColor(c.document_id)
   const value = reranked ? (c.rerank_score ?? 0) : (c.vector_similarity ?? 0)
+  // Reranker probabilities are polarised (~0.99 vs ~0.0001): draw them on the model's logit scale.
+  const width = reranked ? rerankBar(value) : value
   return (
     <li style={sourceColorStyle(color)}>
       <button
@@ -211,9 +214,9 @@ function CandidateRow({ c, rank, reranked, onOpen }: { c: TraceCandidate; rank: 
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken" aria-hidden>
-            <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(value * 100, 2)}%` }} />
+            <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(width * 100, 2)}%` }} />
           </span>
-          <span className="w-8 text-right font-mono tabular-nums">{value.toFixed(2)}</span>
+          <span className="w-9 text-right font-mono tabular-nums">{formatScore(value)}</span>
         </span>
       </button>
     </li>

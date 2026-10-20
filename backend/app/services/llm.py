@@ -100,7 +100,10 @@ def build_context(retrieved: list[dict]) -> tuple[str, dict]:
             "char_start": getattr(chunk, "char_start", None),
             "char_end": getattr(chunk, "char_end", None),
             "snippet": chunk.content[:240],
-            "score": None if relevance is None else round(relevance, 4),
+            "score": None if relevance is None else float(f"{relevance:.4g}"),
+            # Embedding similarity of question and passage: still meaningful for broad questions,
+            # where no single passage "answers" the question and the cross-encoder scores ~0.
+            "similarity": None if candidate is None or candidate.vector_similarity is None else round(candidate.vector_similarity, 4),
         }
         where = ", ".join(
             filter(None, [f'from "{document.filename}"', location(kind, chunk.page_number, citation_map[marker]["section_title"])])

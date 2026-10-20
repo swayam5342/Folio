@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentPropsWithRef, type ReactNode } from 'react'
+import { DropdownMenu } from 'radix-ui'
+import type { ComponentPropsWithRef, ReactNode } from 'react'
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 export { cx }
@@ -42,7 +43,7 @@ export function IconButton({
   className,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+}: ComponentPropsWithRef<'button'> & { label: string }) {
   return (
     <button
       type="button"
@@ -75,65 +76,47 @@ export function Spinner({ size = 16, className }: { size?: number; className?: s
   )
 }
 
-/** Small anchored dropdown menu. Closes on outside click and Escape. */
+/**
+ * Small dropdown menu. Rendered in a portal (Radix) so a card's overflow or a
+ * scrolling list can never clip it, and it flips upward near the screen edge.
+ * `trigger` receives props to spread on the trigger element; Radix adds the
+ * open/close behaviour and ARIA state itself.
+ */
 export function Menu({
   trigger,
   items,
   align = 'right',
 }: {
-  trigger: (props: { onClick: () => void; 'aria-expanded': boolean; 'aria-haspopup': 'menu' }) => ReactNode
+  trigger: (props: { onClick?: () => void; 'aria-expanded'?: boolean; 'aria-haspopup'?: 'menu' }) => ReactNode
   items: { label: string; onSelect: () => void; danger?: boolean }[]
   align?: 'left' | 'right'
 }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
   return (
-    <div ref={ref} className="relative">
-      {trigger({ onClick: () => setOpen((o) => !o), 'aria-expanded': open, 'aria-haspopup': 'menu' })}
-      {open && (
-        <div
-          role="menu"
-          className={cx(
-            'absolute top-full z-30 mt-1 min-w-36 rounded-md border border-line bg-surface p-1 shadow-[0_6px_24px_-8px_rgba(20,25,35,0.25)]',
-            align === 'right' ? 'right-0' : 'left-0',
-          )}
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>{trigger({})}</DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align={align === 'right' ? 'end' : 'start'}
+          sideOffset={4}
+          collisionPadding={8}
+          onClick={(e) => e.stopPropagation()}
+          className="z-(--z-dropdown) min-w-36 rounded-md border border-line bg-surface p-1 shadow-[0_6px_24px_-8px_rgba(20,25,35,0.35)]"
         >
           {items.map((item) => (
-            <button
+            <DropdownMenu.Item
               key={item.label}
-              role="menuitem"
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setOpen(false)
-                item.onSelect()
-              }}
+              onSelect={item.onSelect}
               className={cx(
-                'block w-full rounded px-2.5 py-1.5 text-left text-sm hover:bg-sunken',
+                'block w-full cursor-default select-none rounded px-2.5 py-1.5 text-left text-sm outline-none data-[highlighted]:bg-sunken',
                 item.danger ? 'text-danger' : 'text-ink',
               )}
             >
               {item.label}
-            </button>
+            </DropdownMenu.Item>
           ))}
-        </div>
-      )}
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   )
 }
 

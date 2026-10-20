@@ -72,6 +72,8 @@ export type Source = {
   snippet: string
   /** Relevance to the question: reranker score (0-1), else cosine similarity. */
   score?: number | null
+  /** Embedding similarity of question and passage (0-1); meaningful even for summaries. */
+  similarity?: number | null
   /** Whether the excerpt supports the claims citing it (citation check). */
   support?: 'ok' | 'low' | null
   support_score?: number | null

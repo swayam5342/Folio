@@ -197,7 +197,9 @@ async def run(
         with timer.stage("rerank"):
             scores = await asyncio.to_thread(reranker.score, plan.standalone, passages)
         for c, s in zip(candidates, scores, strict=True):
-            c.rerank_score = round(s, 4)
+            # 4 significant digits, not 4 decimals: cross-encoder probabilities for all but the best
+            # passages are ~1e-4, and rounding them to 0.0 would erase their order.
+            c.rerank_score = float(f"{s:.4g}")
         candidates.sort(key=lambda c: c.rerank_score or 0.0, reverse=True)
 
     # Confidence must describe the passages that will actually reach generation.
