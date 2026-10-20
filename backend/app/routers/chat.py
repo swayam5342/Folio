@@ -279,8 +279,9 @@ async def chat(
             result.confidence = "low"
             yield _sse("replace", {"text": answer})
         elif coverage < settings.MIN_CITATION_COVERAGE:
+            # The warning covers the uncited claims; the confidence badge stays the retrieval signal
+            # (overwriting it said "no passage matches" even when the best passage scored 0.99).
             answer += COVERAGE_WARNING
-            result.confidence = "low"
             yield _sse("replace", {"text": answer})
         verdicts: dict[str, dict] = {}
         if settings.ENABLE_CITATION_CHECK and settings.ENABLE_RERANKER and sources:
