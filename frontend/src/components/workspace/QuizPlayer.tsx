@@ -5,6 +5,7 @@ import type { QuizItem, Source, StudySet } from '../../api/types'
 import { ChevronLeft } from '../ui/icons'
 import { Button, cx } from '../ui/primitives'
 import { CitationChip } from './CitationChip'
+import { sourceLabel } from '../../lib/sourceLocation'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 
@@ -17,12 +18,16 @@ export default function QuizPlayer({
   onOpenSource: (source: Source) => void
   onBack: () => void
 }) {
-  const items = set.items as QuizItem[]
+  const all = set.items as QuizItem[]
   const saveScore = useSaveScore(set.notebook_id)
   const root = useRef<HTMLDivElement>(null)
+  // The questions in this run: the whole quiz, or only the ones missed last time ("review mistakes").
+  const [items, setItems] = useState(all)
+  const [reviewing, setReviewing] = useState(false)
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<number | null>(null)
   const [correct, setCorrect] = useState(0)
+  const [missed, setMissed] = useState<QuizItem[]>([])
   const [finished, setFinished] = useState(false)
 
   const item = items[index]
@@ -32,25 +37,31 @@ export default function QuizPlayer({
     if (picked !== null || finished) return
     setPicked(option)
     if (option === item.answer_index) setCorrect((c) => c + 1)
+    else setMissed((m) => [...m, item])
   }
 
   const next = () => {
     if (picked === null) return
     if (last) {
       setFinished(true)
-      saveScore.mutate({ id: set.id, score: correct })
+      if (!reviewing) saveScore.mutate({ id: set.id, score: correct })  // only full runs count
     } else {
       setIndex((i) => i + 1)
       setPicked(null)
     }
   }
 
-  const retake = () => {
+  const start = (questions: QuizItem[], review: boolean) => {
+    setItems(questions)
+    setReviewing(review)
     setIndex(0)
     setPicked(null)
     setCorrect(0)
+    setMissed([])
     setFinished(false)
   }
+  const retake = () => start(all, false)
+  const reviewMistakes = () => start(missed, true)
 
   // Keyboard: 1–4 (or A–D) to answer, Enter for the next question.
   useEffect(() => {
@@ -85,15 +96,20 @@ export default function QuizPlayer({
       <div ref={root} className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
         {header}
         <div className="mt-10 text-center">
-          <p className="text-sm text-muted">Your score</p>
+          <p className="text-sm text-muted">{reviewing ? 'Review of your mistakes' : 'Your score'}</p>
           <p className="mt-1 font-serif text-5xl font-semibold tracking-tight">
             {correct} / {items.length}
           </p>
           <p className="mt-2 text-muted">
             {pct >= 80 ? 'Strong result.' : pct >= 50 ? 'Good progress — review the questions you missed.' : 'Worth another pass through the sources.'}
           </p>
-          <div className="mt-8 flex justify-center gap-2">
-            <Button variant="primary" onClick={retake}>
+          <div className="mt-8 flex flex-wrap justify-center gap-2">
+            {missed.length > 0 && (
+              <Button variant="primary" onClick={reviewMistakes}>
+                Review {missed.length} {missed.length === 1 ? 'mistake' : 'mistakes'}
+              </Button>
+            )}
+            <Button variant={missed.length ? 'secondary' : 'primary'} onClick={retake}>
               Retake quiz
             </Button>
             <Button onClick={onBack}>Back to study</Button>
@@ -108,7 +124,7 @@ export default function QuizPlayer({
       {header}
       <div className="mt-6 flex items-center gap-3">
         <span className="text-sm font-medium text-muted">
-          Question {index + 1} of {items.length}
+          {reviewing ? 'Review · ' : ''}Question {index + 1} of {items.length}
         </span>
         <div className="h-1 flex-1 overflow-hidden rounded-full bg-sunken" aria-hidden="true">
           <div className="h-full bg-ink transition-[width]" style={{ width: `${(index / items.length) * 100}%` }} />
@@ -158,7 +174,7 @@ export default function QuizPlayer({
             <CitationChip citation={{ n: 1, source: item.source }} onOpen={onOpenSource} />
           </p>
           <p className="mt-2 text-sm text-muted">
-            {item.source.filename}, page {item.source.page_number}
+            {sourceLabel(item.source)}
           </p>
         </div>
       )}

@@ -4,7 +4,8 @@ Two strategies (CHUNK_STRATEGY):
 - "fixed": an overlapping character window over each page (the original method).
 - "structured": follows the page's layout blocks. A heading starts a new section;
   paragraphs are packed into chunks up to CHUNK_SIZE without being cut, code blocks
-  stay whole (up to twice CHUNK_SIZE), and only a paragraph too long for one chunk
+  stay whole (up to twice CHUNK_SIZE), tables (Markdown) are chunks of their own, split
+  by rows with the header repeated when large, and only a paragraph too long for one chunk
   falls back to the overlapping window. Every chunk records its section title, so the
   title can be embedded with it ("contextual chunks").
 
@@ -63,6 +64,43 @@ def _title(text: str) -> str:
     return " ".join(text.split())[:MAX_SECTION_TITLE]
 
 
+def assemble_pages(pages: list[dict], sep: str) -> list[dict]:
+    """Build each page's text from its blocks joined by sep, recording every block's
+    [start, end) in that text. Chunk offsets and the viewer's highlights rely on these."""
+    for page in pages:
+        pos = 0
+        for i, block in enumerate(page["blocks"]):
+            if i:
+                pos += len(sep)
+            block["start"] = pos
+            pos += len(block["text"])
+            block["end"] = pos
+        page["text"] = sep.join(block["text"] for block in page["blocks"])
+    return pages
+
+
+def _table_pieces(table: str, size: int) -> Iterator[tuple[int, int, str]]:
+    """A Markdown table split into row groups of about size characters, each repeating the
+    header. Offsets cover the piece's own rows, so a highlight lands on them."""
+    lines = table.split("\n")
+    starts = []
+    pos = 0
+    for line in lines:
+        starts.append(pos)
+        pos += len(line) + 1
+    has_rule = len(lines) > 2 and set(lines[1].replace(" ", "")) <= set("|-:")
+    head = 2 if has_rule else 1
+    header = "\n".join(lines[:head])
+    i = head
+    while i < len(lines):
+        j = i + 1  # at least one row per piece, even an oversized one
+        while j < len(lines) and starts[j] + len(lines[j]) - starts[i] + len(header) + 1 <= size:
+            j += 1
+        start, end = starts[i], starts[j - 1] + len(lines[j - 1])
+        yield start, end, f"{header}\n{table[start:end]}"
+        i = j
+
+
 class _StructuredChunker:
     """Walks pages in order, carrying the current section title across page breaks."""
 
@@ -94,20 +132,25 @@ class _StructuredChunker:
 
     def add_page(self, page: dict) -> None:
         self.page = page
-        blocks = page.get("blocks") or [{"kind": "body", "text": page["text"]}]
-        offset = 0
+        blocks = page.get("blocks") or [{"kind": "body", "text": page["text"], "start": 0, "end": len(page["text"])}]
         for block in blocks:
             text, kind = block["text"], block["kind"]
-            # Blocks were joined with newlines to make the page text; find this one from the last position.
-            found = page["text"].find(text, offset)
-            start = found if found != -1 else offset
-            end = start + len(text)
-            offset = end
+            start, end = block["start"], block["end"]  # set by assemble_pages
 
             if kind == "heading":
                 self.flush()
                 self.section = _title(text)
                 self.buffer.append((start, end, kind))
+                continue
+
+            if kind == "table":
+                # Tables stand alone: never merged into prose, split by rows (header repeated) when large.
+                self.flush(drop_lone_heading=True)
+                if len(text) <= self.size * 2:
+                    self.emit(start, end, text)
+                else:
+                    for s, e, piece in _table_pieces(text, self.size):
+                        self.emit(start + s, start + e, piece)
                 continue
 
             if len(text) > (self.size * 2 if kind == "code" else self.size):
@@ -116,9 +159,8 @@ class _StructuredChunker:
                     self.emit(start + s, start + e, piece)
                 continue
 
-            pending = (self.buffer[-1][1] - self.buffer[0][0]) if self.buffer else 0
             only_heading = len(self.buffer) == 1 and self.buffer[0][2] == "heading"  # keep a heading with its first block
-            if self.buffer and not only_heading and pending + 1 + len(text) > self.size:
+            if self.buffer and not only_heading and end - self.buffer[0][0] > self.size:
                 self.flush()
             self.buffer.append((start, end, kind))
             if kind == "code" and len(text) > self.size:

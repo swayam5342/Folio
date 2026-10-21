@@ -1,14 +1,16 @@
-import { TriangleAlert } from 'lucide-react'
+import { TriangleAlert, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 
 import { useTrace } from '../../api/queries'
 import type { Confidence, RetrievalTrace as Trace, Source, TraceCandidate } from '../../api/types'
 import { spring } from '../../lib/motion'
+import { formatScore, rerankBar } from '../../lib/scores'
 import { sourceColorStyle } from '../../lib/sourceColors'
 import { useSourceColor } from '../../lib/useSourceColors'
 import { Spinner, cx } from '../ui/primitives'
 import type { OpenSource } from './CitationChip'
+import { isPaged, sourceLabel, sourceLocation } from '../../lib/sourceLocation'
 
 const CONFIDENCE: Record<Confidence, { label: string; className: string; hint: string; fill: number }> = {
   high: { label: 'High retrieval match', className: 'bg-ok-soft text-ok', hint: 'The best passage clearly matches the question.', fill: 1 },
@@ -168,8 +170,11 @@ const asSource = (c: TraceCandidate): Source => ({
   chunk_id: c.chunk_id,
   document_id: c.document_id,
   filename: c.filename,
+  document_kind: c.document_kind,
   page_number: c.page_number,
   section_title: c.section_title,
+  char_start: c.char_start,
+  char_end: c.char_end,
   snippet: c.snippet,
   score: c.rerank_score ?? c.vector_similarity,
   support: c.support,
@@ -178,12 +183,14 @@ const asSource = (c: TraceCandidate): Source => ({
 function CandidateRow({ c, rank, reranked, onOpen }: { c: TraceCandidate; rank: number; reranked: boolean; onOpen: OpenSource }) {
   const color = useSourceColor(c.document_id)
   const value = reranked ? (c.rerank_score ?? 0) : (c.vector_similarity ?? 0)
+  // Reranker probabilities are polarised (~0.99 vs ~0.0001): draw them on the model's logit scale.
+  const width = reranked ? rerankBar(value) : value
   return (
     <li style={sourceColorStyle(color)}>
       <button
         type="button"
         onClick={() => onOpen(asSource(c))}
-        aria-label={`Open ${c.filename}, page ${c.page_number}${c.marker ? ` (cited as ${c.marker})` : ''}`}
+        aria-label={`Open ${sourceLabel(c)}${c.marker ? ` (cited as ${c.marker})` : ''}`}
         title={c.snippet}
         className={cx(
           'grid w-full grid-cols-[1.5rem_minmax(0,1fr)_5.5rem] items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-sunken',
@@ -195,7 +202,8 @@ function CandidateRow({ c, rank, reranked, onOpen }: { c: TraceCandidate; rank: 
           <span className="flex items-center gap-1.5">
             <span aria-hidden className="size-2 shrink-0 rounded-full bg-[var(--src)]" />
             <span className="truncate font-medium">
-              {c.filename}, p. {c.page_number}
+              {c.filename}
+              {isPaged(c) && `, ${sourceLocation(c)}`}
             </span>
             {c.marker && <span className="shrink-0 rounded-sm bg-ink px-1 font-mono text-[10px] text-paper">{c.marker}</span>}
             {c.support === 'low' && <TriangleAlert aria-label="Low support" size={12} className="shrink-0 text-warn" />}
@@ -206,9 +214,9 @@ function CandidateRow({ c, rank, reranked, onOpen }: { c: TraceCandidate; rank: 
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken" aria-hidden>
-            <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(value * 100, 2)}%` }} />
+            <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(width * 100, 2)}%` }} />
           </span>
-          <span className="w-8 text-right font-mono tabular-nums">{value.toFixed(2)}</span>
+          <span className="w-9 text-right font-mono tabular-nums">{formatScore(value)}</span>
         </span>
       </button>
     </li>
@@ -260,6 +268,13 @@ export function TraceView({ trace, onOpen }: { trace: Trace; onOpen: OpenSource 
   const off = Object.entries(trace.features).filter(([, on]) => !on).map(([name]) => name.replace(/_/g, ' '))
   return (
     <div className="space-y-6">
+      {trace.cached && (
+        <div className="flex items-start gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-xs text-accent">
+          <Zap aria-hidden size={13} className="mt-px shrink-0" />
+          Answered instantly from the cache: this question was asked before over the same sources. The scores and
+          timings below are from the original answer.
+        </div>
+      )}
       <Section title="Confidence">
         <ConfidenceMeter trace={trace} />
       </Section>

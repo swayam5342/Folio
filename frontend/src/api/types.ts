@@ -15,10 +15,14 @@ export type Notebook = {
 
 export type DocumentStatus = 'processing' | 'ready' | 'failed'
 
+/** pdf | docx | pptx | txt | md | text (pasted text) */
+export type SourceKind = 'pdf' | 'docx' | 'pptx' | 'txt' | 'md' | 'text'
+
 export type SourceDocument = {
   id: string
   notebook_id: string
   filename: string
+  kind: SourceKind
   page_count: number
   ocr_pages: number
   size_bytes: number
@@ -27,7 +31,30 @@ export type SourceDocument = {
   risk_score: number
   risk_reasons: string[]
   pii_summary: Record<string, number>
+  /** Short overview written after indexing; null until done (or when it failed). */
+  summary: string | null
+  /** Questions this source answers, offered as starters in an empty chat. */
+  suggested_questions: string[]
+  summary_status: 'pending' | 'done' | 'failed' | null
+  /** When the current chunks (and viewer text) were stored. */
+  indexed_at: string | null
+  /** Live indexing progress while processing. */
+  progress?: IndexProgress | null
   created_at: string
+}
+
+export type IndexProgress = {
+  stage: 'reading' | 'ocr' | 'chunking' | 'embedding' | 'saving'
+  done: number | null
+  total: number | null
+}
+
+/** A page (or slide) of a non-PDF source, as GET /documents/{id}/pages returns it. */
+export type SourcePage = {
+  page_number: number
+  text: string
+  /** Each block's [start, end) range in text. */
+  blocks: { kind: 'heading' | 'body' | 'code' | 'table'; start: number; end: number }[]
 }
 
 export type Source = {
@@ -35,11 +62,18 @@ export type Source = {
   chunk_id: string
   document_id: string
   filename: string
+  document_kind?: SourceKind
+  /** Slide number for pptx; 1 for single-page kinds. */
   page_number: number
   section_title?: string | null
+  /** The chunk's range in the page text (non-PDF sources). */
+  char_start?: number | null
+  char_end?: number | null
   snippet: string
   /** Relevance to the question: reranker score (0-1), else cosine similarity. */
   score?: number | null
+  /** Embedding similarity of question and passage (0-1); meaningful even for summaries. */
+  similarity?: number | null
   /** Whether the excerpt supports the claims citing it (citation check). */
   support?: 'ok' | 'low' | null
   support_score?: number | null
@@ -47,8 +81,28 @@ export type Source = {
 
 export type Confidence = 'high' | 'medium' | 'low'
 
+export type ChatThread = {
+  id: string
+  notebook_id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+/** A saved answer (citations kept as [[Cn]] markers indexing into sources) or a written note. */
+export type Note = {
+  id: string
+  notebook_id: string
+  title: string
+  content: string
+  sources: Source[]
+  created_at: string
+  updated_at: string
+}
+
 export type Message = {
   id: string
+  thread_id?: string | null
   role: 'user' | 'assistant'
   content: string
   sources: Source[]
@@ -75,6 +129,7 @@ export type RetrievalEvent = {
     marker: string
     document_id: string
     filename: string
+    document_kind?: SourceKind
     page_number: number
     section_title: string | null
     score: number | null
@@ -86,8 +141,11 @@ export type TraceCandidate = {
   chunk_id: string
   document_id: string
   filename: string
+  document_kind?: SourceKind
   page_number: number
   section_title: string | null
+  char_start?: number | null
+  char_end?: number | null
   snippet: string
   vector_rank: number | null
   keyword_rank: number | null
@@ -120,18 +178,26 @@ export type RetrievalTrace = {
   total_ms: number
   tokens: { planner: TokenUsage; answer: TokenUsage }
   citation_coverage?: number | null
+  /** Answered from the answer cache: the scores and timings are the original answer's. */
+  cached?: boolean
 }
 
-/** What the PDF viewer should show. */
+/** What the document viewer should show. */
 export type ViewerTarget = {
   documentId: string
   page: number
   snippet?: string
+  /** The cited range in the page text (text viewer only). */
+  charStart?: number | null
+  charEnd?: number | null
   /** Changes on every open so re-clicking the same citation re-triggers the highlight. */
   nonce: number
 }
 
-export type StudyKind = 'quiz' | 'flashcards'
+/** Quizzes and flashcards are practised; the "studio" kinds are cited documents to read. */
+export type StudyKind = 'quiz' | 'flashcards' | 'study_guide' | 'faq' | 'timeline' | 'glossary'
+export type StudioKind = Exclude<StudyKind, 'quiz' | 'flashcards'>
+export type QuizDifficulty = 'easy' | 'medium' | 'hard'
 
 export type QuizItem = {
   question: string
@@ -147,10 +213,18 @@ export type FlashcardItem = {
   source: Source
 }
 
+export type StudyGuideItem = { heading: string; body: string; source: Source }
+export type FaqItem = { question: string; answer: string; source: Source }
+export type TimelineItem = { when: string; event: string; source: Source }
+export type GlossaryItem = { term: string; definition: string; source: Source }
+export type StudioItem = StudyGuideItem | FaqItem | TimelineItem | GlossaryItem
+
 export type StudySetSummary = {
   id: string
   notebook_id: string
   kind: StudyKind
+  /** Quizzes only. */
+  difficulty?: QuizDifficulty | null
   title: string
   topic: string | null
   item_count: number
@@ -160,12 +234,13 @@ export type StudySetSummary = {
 
 export type StudySet = StudySetSummary & {
   document_ids: string[]
-  items: QuizItem[] | FlashcardItem[]
+  items: QuizItem[] | FlashcardItem[] | StudioItem[]
 }
 
 export type StudySetCreate = {
   kind: StudyKind
   count: number
+  difficulty?: QuizDifficulty
   topic?: string
   document_ids?: string[]
 }

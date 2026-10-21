@@ -5,9 +5,9 @@ import type { Source, StudyKind, ViewerTarget } from '../api/types'
 /** Tabs of the right-hand pane. */
 export type RightTab = 'viewer' | 'inspector' | 'citations'
 /** Center pane modes. */
-export type CenterMode = 'chat' | 'study'
+export type CenterMode = 'chat' | 'study' | 'notes'
 /** Mobile bottom-bar tabs. */
-export type MobileTab = 'sources' | 'chat' | 'side' | 'study'
+export type MobileTab = 'sources' | 'chat' | 'side' | 'study' | 'notes'
 
 /** Where a citation was clicked, so the viewer can draw a beam from it to the highlight. */
 export type BeamOrigin = { x: number; y: number; nonce: number }
@@ -22,6 +22,8 @@ type WorkspaceState = {
   sourcesOpen: boolean
   mobileTab: MobileTab
   viewer: ViewerTarget | null
+  /** Chat thread shown in the chat pane; null = the most recently used one. */
+  threadId: string | null
   /** Answer whose retrieval the Inspector and Citations tabs show; null = the latest answer. */
   inspectedId: string | null
   /** Sources unticked by the user (excluded from chat retrieval). */
@@ -39,11 +41,15 @@ type WorkspaceState = {
   setRightOpen: (open: boolean) => void
   setSourcesOpen: (open: boolean) => void
   setMobileTab: (tab: MobileTab) => void
-  openSource: (source: Pick<Source, 'document_id' | 'page_number' | 'snippet'>, origin?: { x: number; y: number }) => void
+  openSource: (
+    source: Pick<Source, 'document_id' | 'page_number' | 'snippet' | 'char_start' | 'char_end'>,
+    origin?: { x: number; y: number },
+  ) => void
   openDocument: (documentId: string, page?: number) => void
   closeViewer: () => void
   inspect: (messageId: string | null, tab?: Exclude<RightTab, 'viewer'>) => void
   setExcluded: (excluded: Set<string>) => void
+  setThread: (threadId: string | null) => void
   setPaletteOpen: (open: boolean) => void
   requestStudy: (kind: StudyKind, topic?: string) => void
   focusComposer: () => void
@@ -57,6 +63,7 @@ const initial = {
   sourcesOpen: true,
   mobileTab: 'chat' as MobileTab,
   viewer: null,
+  threadId: null,
   inspectedId: null,
   excluded: new Set<string>(),
   paletteOpen: false,
@@ -82,11 +89,21 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
   setRightOpen: (rightOpen) => set({ rightOpen }),
   setSourcesOpen: (sourcesOpen) => set({ sourcesOpen }),
   setMobileTab: (mobileTab) =>
-    set((s) => ({ mobileTab, center: mobileTab === 'chat' || mobileTab === 'study' ? mobileTab : s.center })),
+    set((s) => ({
+      mobileTab,
+      center: mobileTab === 'chat' || mobileTab === 'study' || mobileTab === 'notes' ? mobileTab : s.center,
+    })),
   openSource: (source, origin) => {
     const nonce = Date.now()
     set({
-      viewer: { documentId: source.document_id, page: source.page_number, snippet: source.snippet, nonce },
+      viewer: {
+        documentId: source.document_id,
+        page: source.page_number,
+        snippet: source.snippet,
+        charStart: source.char_start,
+        charEnd: source.char_end,
+        nonce,
+      },
       rightTab: 'viewer',
       rightOpen: true,
       mobileTab: 'side',
@@ -99,6 +116,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     set((s) => ({ viewer: null, rightOpen: s.rightTab !== 'viewer', mobileTab: s.center })),
   inspect: (inspectedId, tab = 'inspector') => set({ inspectedId, rightTab: tab, rightOpen: true, mobileTab: 'side' }),
   setExcluded: (excluded) => set({ excluded }),
+  setThread: (threadId) => set({ threadId, inspectedId: null, center: 'chat', mobileTab: 'chat' }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   requestStudy: (kind, topic) =>
     set({ studyRequest: { kind, topic, nonce: Date.now() }, center: 'study', mobileTab: 'study' }),

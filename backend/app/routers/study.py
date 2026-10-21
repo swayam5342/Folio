@@ -37,7 +37,9 @@ async def create_study_set(
 
     kind = StudyKind(payload.kind)
     try:
-        title, items = await study.generate(db, notebook.id, kind, payload.count, payload.topic, document_ids)
+        title, items = await study.generate(
+            db, notebook.id, kind, payload.count, payload.topic, document_ids, difficulty=payload.difficulty
+        )
     except llm.RateLimited as exc:
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
         return JSONResponse(status_code=429, content={"detail": exc.detail}, headers=headers)
@@ -53,6 +55,7 @@ async def create_study_set(
         topic=payload.topic,
         document_ids=[str(d) for d in document_ids],
         items=items,
+        difficulty=payload.difficulty if kind == StudyKind.quiz else None,
     )
     db.add(study_set)
     notebook.touch()

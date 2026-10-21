@@ -1,14 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, ApiError, json } from './client'
-import type { EvalResults, Message, Notebook, RetrievalTrace, SourceDocument, StudySet, StudySetCreate, StudySetSummary, User } from './types'
+import type { ChatThread, EvalResults, Message, Note, Notebook, RetrievalTrace, SourceDocument, SourcePage, StudySet, StudySetCreate, StudySetSummary, User } from './types'
 
 export const keys = {
   me: ['me'] as const,
   notebooks: ['notebooks'] as const,
   notebook: (id: string) => ['notebooks', id] as const,
   documents: (notebookId: string) => ['notebooks', notebookId, 'documents'] as const,
+  pages: (documentId: string) => ['documents', documentId, 'pages'] as const,
   messages: (notebookId: string) => ['notebooks', notebookId, 'messages'] as const,
+  threads: (notebookId: string) => ['notebooks', notebookId, 'threads'] as const,
+  threadMessages: (threadId: string) => ['threads', threadId, 'messages'] as const,
+  notes: (notebookId: string) => ['notebooks', notebookId, 'notes'] as const,
   trace: (messageId: string) => ['messages', messageId, 'trace'] as const,
   evalResults: ['eval-results'] as const,
   studySets: (notebookId: string) => ['notebooks', notebookId, 'study-sets'] as const,
@@ -121,8 +125,9 @@ export const useDocuments = (notebookId: string) =>
     queryKey: keys.documents(notebookId),
     queryFn: () => api<SourceDocument[]>(`/notebooks/${notebookId}/documents`),
     enabled: !!notebookId,
-    // Poll while anything is still being processed.
-    refetchInterval: (q) => (q.state.data?.some((d) => d.status === 'processing') ? 2000 : false),
+    // Poll while anything is still being processed or summarized.
+    refetchInterval: (q) =>
+      q.state.data?.some((d) => d.status === 'processing' || d.summary_status === 'pending') ? 2000 : false,
   })
 
 export function useUploadDocument(notebookId: string) {
@@ -137,6 +142,27 @@ export function useUploadDocument(notebookId: string) {
       qc.setQueryData<SourceDocument[]>(keys.documents(notebookId), (list) => [...(list ?? []), doc])
       qc.invalidateQueries({ queryKey: keys.notebooks, exact: true })
     },
+  })
+}
+
+export function useAddTextSource(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { title: string; text: string }) =>
+      api<SourceDocument>(`/notebooks/${notebookId}/documents/text`, { method: 'POST', ...json(body) }),
+    onSuccess: (doc) => {
+      qc.setQueryData<SourceDocument[]>(keys.documents(notebookId), (list) => [...(list ?? []), doc])
+      qc.invalidateQueries({ queryKey: keys.notebooks, exact: true })
+    },
+  })
+}
+
+/** Page text of a non-PDF source, for the text viewer. Re-fetched when the source is re-indexed. */
+export function useDocumentPages(documentId: string, indexedKey?: string) {
+  return useQuery({
+    queryKey: [...keys.pages(documentId), indexedKey ?? ''],
+    queryFn: () => api<SourcePage[]>(`/documents/${documentId}/pages`),
+    staleTime: Infinity,
   })
 }
 
@@ -165,12 +191,6 @@ export const documentFileUrl = (id: string) => `/api/documents/${id}/file`
 
 // --- Messages -----------------------------------------------------------
 
-export const useMessages = (notebookId: string) =>
-  useQuery({
-    queryKey: keys.messages(notebookId),
-    queryFn: () => api<Message[]>(`/notebooks/${notebookId}/messages`),
-  })
-
 /** Retrieval trace of one answer; fetched only when the panel is opened. Traces never change. */
 export const useTrace = (messageId: string, enabled: boolean) =>
   useQuery({
@@ -181,11 +201,97 @@ export const useTrace = (messageId: string, enabled: boolean) =>
     retry: false,
   })
 
-export function useClearMessages(notebookId: string) {
+// --- Chat threads ---------------------------------------------------------
+
+export const useThreads = (notebookId: string) =>
+  useQuery({
+    queryKey: keys.threads(notebookId),
+    queryFn: () => api<ChatThread[]>(`/notebooks/${notebookId}/threads`),
+    enabled: !!notebookId,
+  })
+
+/** Messages of one thread; disabled (empty) when there's no thread yet. */
+export const useThreadMessages = (threadId: string | null) =>
+  useQuery({
+    queryKey: keys.threadMessages(threadId ?? 'none'),
+    queryFn: () => api<Message[]>(`/threads/${threadId}/messages`),
+    enabled: !!threadId,
+  })
+
+export function useCreateThread(notebookId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => api<void>(`/notebooks/${notebookId}/messages`, { method: 'DELETE' }),
-    onSuccess: () => qc.setQueryData<Message[]>(keys.messages(notebookId), []),
+    mutationFn: () => api<ChatThread>(`/notebooks/${notebookId}/threads`, { method: 'POST', ...json({}) }),
+    onSuccess: (thread) => {
+      // The server may hand back an existing empty chat instead of a new one.
+      qc.setQueryData<ChatThread[]>(keys.threads(notebookId), (list = []) => [thread, ...list.filter((t) => t.id !== thread.id)])
+      qc.setQueryData<Message[]>(keys.threadMessages(thread.id), (messages) => messages ?? [])
+    },
+  })
+}
+
+export function useRenameThread(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      api<ChatThread>(`/threads/${id}`, { method: 'PATCH', ...json({ title }) }),
+    onSuccess: (thread) =>
+      qc.setQueryData<ChatThread[]>(keys.threads(notebookId), (list = []) => list.map((t) => (t.id === thread.id ? thread : t))),
+  })
+}
+
+export function useDeleteThread(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/threads/${id}`, { method: 'DELETE' }),
+    onSuccess: (_, id) => qc.setQueryData<ChatThread[]>(keys.threads(notebookId), (list = []) => list.filter((t) => t.id !== id)),
+  })
+}
+
+export function useClearThread() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (threadId: string) => api<void>(`/threads/${threadId}/messages`, { method: 'DELETE' }),
+    onSuccess: (_, threadId) => qc.setQueryData<Message[]>(keys.threadMessages(threadId), []),
+  })
+}
+
+/** Deletes a thread's last message (used before regenerating an answer). */
+export const deleteMessage = (id: string) => api<void>(`/messages/${id}`, { method: 'DELETE' })
+
+// --- Notes -------------------------------------------------------------------
+
+export const useNotes = (notebookId: string) =>
+  useQuery({
+    queryKey: keys.notes(notebookId),
+    queryFn: () => api<Note[]>(`/notebooks/${notebookId}/notes`),
+    enabled: !!notebookId,
+  })
+
+export function useCreateNote(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { title: string; content: string; sources?: Note['sources'] }) =>
+      api<Note>(`/notebooks/${notebookId}/notes`, { method: 'POST', ...json(body) }),
+    onSuccess: (note) => qc.setQueryData<Note[]>(keys.notes(notebookId), (list = []) => [note, ...list]),
+  })
+}
+
+export function useUpdateNote(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; title?: string; content?: string }) =>
+      api<Note>(`/notes/${id}`, { method: 'PATCH', ...json(body) }),
+    onSuccess: (note) =>
+      qc.setQueryData<Note[]>(keys.notes(notebookId), (list = []) => [note, ...list.filter((n) => n.id !== note.id)]),
+  })
+}
+
+export function useDeleteNote(notebookId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/notes/${id}`, { method: 'DELETE' }),
+    onSuccess: (_, id) => qc.setQueryData<Note[]>(keys.notes(notebookId), (list = []) => list.filter((n) => n.id !== id)),
   })
 }
 

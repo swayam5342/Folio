@@ -48,11 +48,12 @@ class Settings(BaseSettings):
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
     # Confidence. "high": best reranker score (0-1) >= CONFIDENCE_HIGH. "low" (and abstain) needs
     # both weak signals: reranker < CONFIDENCE_LOW and best cosine similarity < SIMILARITY_LOW.
-    # Without the reranker, SIMILARITY_HIGH / SIMILARITY_LOW alone decide.
+    # Without the reranker, SIMILARITY_HIGH / SIMILARITY_LOW alone decide. Tuned 2026-10-20 on the eval set:
+    # 0 answerable questions refused, 4 of 7 unanswerable refused (the rest have strong look-alike passages).
     CONFIDENCE_HIGH: float = 0.5
-    CONFIDENCE_LOW: float = 0.05
+    CONFIDENCE_LOW: float = 0.01
     SIMILARITY_HIGH: float = 0.75
-    SIMILARITY_LOW: float = 0.55
+    SIMILARITY_LOW: float = 0.60
     # A cited claim whose cross-encoder score against its excerpt is below this is "low support".
     SUPPORT_LOW: float = 0.01
     MIN_CITATION_COVERAGE: float = 0.8
@@ -68,13 +69,16 @@ class Settings(BaseSettings):
     # harness can measure what each one contributes. Names must start with ENABLE_.
     ENABLE_HYBRID_SEARCH: bool = True  # false = vector search only (the evaluation baseline)
     ENABLE_QUERY_REWRITE: bool = True  # follow-ups rewritten into standalone questions using chat history
-    ENABLE_MULTI_QUERY: bool = True  # also search QUERY_VARIANTS paraphrases, fused with RRF
+    ENABLE_MULTI_QUERY: bool = False  # also search QUERY_VARIANTS paraphrases (off: hurt Hit@1 once reranking was on)
     ENABLE_HYDE: bool = False  # also search with a short hypothetical answer (vector search only)
     ENABLE_RERANKER: bool = True  # local cross-encoder reorders the fused candidates
     ENABLE_ABSTENTION: bool = True  # say "not in the sources" instead of answering on weak evidence
     ENABLE_CITATION_CHECK: bool = True  # flag citations whose excerpt doesn't support the claim (cross-encoder)
     ENABLE_PROMPT_INJECTION_SCAN: bool = True  # quarantine source passages that try to control the model
     ENABLE_PII_REDACTION: bool = True  # allow per-notebook PII masking during indexing
+    ENABLE_NEIGHBOR_EXPANSION: bool = True  # add the chunks around each chosen passage (same page and section)
+    ENABLE_ANSWER_CACHE: bool = True  # reuse stored answers for repeat questions over unchanged sources
+    ENABLE_SOURCE_SUMMARIES: bool = True  # one short Groq summary per source, written after indexing
 
     def feature_flags(self) -> dict[str, bool]:
         """All ENABLE_* settings, keyed by lower-case name without the prefix."""

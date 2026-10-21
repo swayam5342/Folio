@@ -23,13 +23,19 @@ export async function streamChat(
   handlers: StreamHandlers,
   signal?: AbortSignal,
   documentIds?: string[] | null,
+  options: { threadId?: string | null; regenerate?: boolean } = {},
 ): Promise<void> {
   let res: Response
   try {
     res = await fetch(`/api/notebooks/${notebookId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify(documentIds !== undefined && documentIds !== null ? { question, document_ids: documentIds } : { question }),
+      body: JSON.stringify({
+        question,
+        ...(documentIds !== undefined && documentIds !== null ? { document_ids: documentIds } : {}),
+        ...(options.threadId ? { thread_id: options.threadId } : {}),
+        ...(options.regenerate ? { regenerate: true } : {}),
+      }),
       credentials: 'same-origin',
       signal,
     })

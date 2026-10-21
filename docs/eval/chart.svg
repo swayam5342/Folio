@@ -5,27 +5,27 @@
 <text font-family="Helvetica" x="16" y="96" font-size="12" fill="#16131f">Vector search only (v1 baseline)</text>
 <text font-family="Helvetica" x="16" y="122" font-size="12" fill="#16131f">+ keyword search (RRF)</text>
 <text font-family="Helvetica" x="16" y="148" font-size="12" fill="#16131f">+ query rewrite</text>
-<text font-family="Helvetica" x="16" y="174" font-size="12" fill="#16131f">+ multi-query</text>
-<text font-family="Helvetica" x="16" y="200" font-size="12" fill="#16131f">+ reranker &amp; confidence gate</text>
-<text font-family="Helvetica" x="16" y="226" font-size="12" fill="#16131f">+ structure-aware chunks</text>
+<text font-family="Helvetica" x="16" y="174" font-size="12" fill="#16131f">+ reranker &amp; confidence gate</text>
+<text font-family="Helvetica" x="16" y="200" font-size="12" fill="#16131f">+ structure-aware chunks</text>
+<text font-family="Helvetica" x="16" y="226" font-size="12" fill="#16131f">+ neighbouring text</text>
 <text font-family="Helvetica" x="266" y="76" font-size="12" font-weight="bold" fill="#16131f">Hit@1</text>
 <line x1="266" y1="82" x2="266" y2="232" stroke="#ddd8cc"/>
 <path d="M266,84 h108.0 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-108.0 z" fill="#6d28d9"/>
 <text font-family="Helvetica" x="384.0" y="96" font-size="11" fill="#16131f">77%</text>
-<path d="M266,110 h104.7 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-104.7 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="380.7" y="122" font-size="11" fill="#16131f">74%</text>
-<path d="M266,136 h108.0 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-108.0 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="384.0" y="148" font-size="11" fill="#16131f">77%</text>
-<path d="M266,162 h101.3 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-101.3 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="377.3" y="174" font-size="11" fill="#16131f">72%</text>
-<path d="M266,188 h128.4 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-128.4 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="404.4" y="200" font-size="11" fill="#16131f">91%</text>
+<path d="M266,110 h111.4 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-111.4 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="387.4" y="122" font-size="11" fill="#16131f">79%</text>
+<path d="M266,136 h111.4 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-111.4 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="387.4" y="148" font-size="11" fill="#16131f">79%</text>
+<path d="M266,162 h128.4 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-128.4 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="404.4" y="174" font-size="11" fill="#16131f">91%</text>
+<path d="M266,188 h131.8 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-131.8 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="407.8" y="200" font-size="11" fill="#16131f">93%</text>
 <path d="M266,214 h131.8 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-131.8 z" fill="#6d28d9"/>
 <text font-family="Helvetica" x="407.8" y="226" font-size="11" fill="#16131f">93%</text>
 <text font-family="Helvetica" x="480" y="76" font-size="12" font-weight="bold" fill="#16131f">Hit@3</text>
 <line x1="480" y1="82" x2="480" y2="232" stroke="#ddd8cc"/>
-<path d="M480,84 h125.0 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-125.0 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="615.0" y="96" font-size="11" fill="#16131f">88%</text>
+<path d="M480,84 h131.8 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-131.8 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="621.8" y="96" font-size="11" fill="#16131f">93%</text>
 <path d="M480,110 h125.0 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-125.0 z" fill="#6d28d9"/>
 <text font-family="Helvetica" x="615.0" y="122" font-size="11" fill="#16131f">88%</text>
 <path d="M480,136 h131.8 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-131.8 z" fill="#6d28d9"/>
@@ -34,21 +34,21 @@
 <text font-family="Helvetica" x="625.2" y="174" font-size="11" fill="#16131f">95%</text>
 <path d="M480,188 h135.2 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-135.2 z" fill="#6d28d9"/>
 <text font-family="Helvetica" x="625.2" y="200" font-size="11" fill="#16131f">95%</text>
-<path d="M480,214 h138.6 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-138.6 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="628.6" y="226" font-size="11" fill="#16131f">98%</text>
+<path d="M480,214 h135.2 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-135.2 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="625.2" y="226" font-size="11" fill="#16131f">95%</text>
 <text font-family="Helvetica" x="694" y="76" font-size="12" font-weight="bold" fill="#16131f">MRR</text>
 <line x1="694" y1="82" x2="694" y2="232" stroke="#ddd8cc"/>
-<path d="M694,84 h117.1 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-117.1 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="821.1" y="96" font-size="11" fill="#16131f">0.83</text>
-<path d="M694,110 h115.9 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-115.9 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="819.9" y="122" font-size="11" fill="#16131f">0.82</text>
-<path d="M694,136 h119.6 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-119.6 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="823.6" y="148" font-size="11" fill="#16131f">0.85</text>
-<path d="M694,162 h117.2 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-117.2 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="821.2" y="174" font-size="11" fill="#16131f">0.83</text>
-<path d="M694,188 h132.8 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-132.8 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="836.8" y="200" font-size="11" fill="#16131f">0.94</text>
-<path d="M694,214 h134.9 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-134.9 z" fill="#6d28d9"/>
-<text font-family="Helvetica" x="838.9" y="226" font-size="11" fill="#16131f">0.95</text>
+<path d="M694,84 h120.3 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-120.3 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="824.3" y="96" font-size="11" fill="#16131f">0.85</text>
+<path d="M694,110 h121.2 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-121.2 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="825.2" y="122" font-size="11" fill="#16131f">0.86</text>
+<path d="M694,136 h122.6 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-122.6 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="826.6" y="148" font-size="11" fill="#16131f">0.87</text>
+<path d="M694,162 h132.8 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-132.8 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="836.8" y="174" font-size="11" fill="#16131f">0.94</text>
+<path d="M694,188 h134.5 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-134.5 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="838.5" y="200" font-size="11" fill="#16131f">0.95</text>
+<path d="M694,214 h134.5 a4.0,4.0 0 0 1 4.0,4.0 v6.0 a4.0,4.0 0 0 1 -4.0,4.0 h-134.5 z" fill="#6d28d9"/>
+<text font-family="Helvetica" x="838.5" y="226" font-size="11" fill="#16131f">0.95</text>
 <text font-family="Helvetica" x="16" y="262" font-size="10" fill="#4f4b5c">Hit@k: a gold page is among the top k passages. MRR: mean of 1 / rank of the first gold passage.</text>
 </svg>

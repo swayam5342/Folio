@@ -61,6 +61,9 @@ ALL_OFF = {
     "ENABLE_HYDE": False,
     "ENABLE_RERANKER": False,
     "ENABLE_ABSTENTION": False,
+    "ENABLE_NEIGHBOR_EXPANSION": False,
+    "ENABLE_ANSWER_CACHE": False,  # never on: every run must really retrieve and generate
+    "ENABLE_SOURCE_SUMMARIES": False,
 }
 LLM_FLAGS = ("ENABLE_QUERY_REWRITE", "ENABLE_MULTI_QUERY", "ENABLE_HYDE")
 
@@ -83,9 +86,9 @@ def _ladder() -> list[Config]:
         ("baseline", "Vector search only (v1 baseline)", "fixed", {}),
         ("hybrid", "+ keyword search (RRF)", "fixed", {"ENABLE_HYBRID_SEARCH": True}),
         ("rewrite", "+ query rewrite", "fixed", {"ENABLE_QUERY_REWRITE": True}),
-        ("multi_query", "+ multi-query", "fixed", {"ENABLE_MULTI_QUERY": True}),
         ("reranker", "+ reranker & confidence gate", "fixed", {"ENABLE_RERANKER": True, "ENABLE_ABSTENTION": True}),
         ("structured", "+ structure-aware chunks", "structured", {}),
+        ("neighbors", "+ neighbouring text", "structured", {"ENABLE_NEIGHBOR_EXPANSION": True}),
     ]
     configs, flags = [], dict(ALL_OFF)
     for name, label, strategy, added in steps:
@@ -95,7 +98,11 @@ def _ladder() -> list[Config]:
 
 
 LADDER = _ladder()
-EXTRA = [Config("hyde", "+ HyDE", "structured", {**LADDER[-1].flags, "ENABLE_HYDE": True})]
+# Measured but off by default: each adds an LLM-generated query to the final configuration.
+EXTRA = [
+    Config("multi_query", "+ multi-query", "structured", {**LADDER[-1].flags, "ENABLE_MULTI_QUERY": True}),
+    Config("hyde", "+ HyDE", "structured", {**LADDER[-1].flags, "ENABLE_HYDE": True}),
+]
 
 
 def smoke_configs() -> list[Config]:
@@ -178,8 +185,8 @@ async def prepare_corpus(db: AsyncSession, strategies: set[str]) -> dict[str, No
         await db.flush()
         for pdf in pdfs:
             data = pdf.read_bytes()
-            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary = await asyncio.to_thread(
-                extract_and_embed, data, strategy
+            page_count, ocr_pages, chunks, embeddings, risk_score, risk_reasons, pii_summary, _pages = await asyncio.to_thread(
+                extract_and_embed, data, "pdf", strategy
             )
             document = Document(
                 notebook_id=notebook.id, filename=pdf.name, storage_path=f"eval/{pdf.name}", size_bytes=len(data),

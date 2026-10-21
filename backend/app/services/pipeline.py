@@ -2,6 +2,7 @@
 
     question → plan (rewrite + variants [+ HyDE]) → embed → hybrid search per query
              → RRF fuse → cross-encoder rerank → confidence gate → top TOP_K excerpts
+             → neighbouring text attached (same page and section)
 
 Every optional stage follows its ENABLE_* flag, so the evaluation harness can
 switch stages off one at a time. `run` is an async generator: it yields the name
@@ -16,6 +17,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -161,13 +163,16 @@ async def run(
     history: list[tuple[str, str]],
     document_ids: list[uuid.UUID] | None = None,
     timer: StageTimer | None = None,
+    plan: QueryPlan | None = None,
 ) -> AsyncIterator[str | RetrievalResult]:
-    """Yields stage names ("plan", "search", "rerank") as they start, then the RetrievalResult."""
+    """Yields stage names ("plan", "search", "rerank") as they start, then the RetrievalResult.
+    Pass plan when the caller already planned (chat does, to check the answer cache first)."""
     timer = timer or StageTimer()
 
-    yield "plan"
-    with timer.stage("plan"):
-        plan = await plan_queries(question, history)
+    if plan is None:
+        yield "plan"
+        with timer.stage("plan"):
+            plan = await plan_queries(question, history)
 
     yield "search"
     queries = plan.search_queries
@@ -192,7 +197,9 @@ async def run(
         with timer.stage("rerank"):
             scores = await asyncio.to_thread(reranker.score, plan.standalone, passages)
         for c, s in zip(candidates, scores, strict=True):
-            c.rerank_score = round(s, 4)
+            # 4 significant digits, not 4 decimals: cross-encoder probabilities for all but the best
+            # passages are ~1e-4, and rounding them to 0.0 would erase their order.
+            c.rerank_score = float(f"{s:.4g}")
         candidates.sort(key=lambda c: c.rerank_score or 0.0, reverse=True)
 
     # Confidence must describe the passages that will actually reach generation.
@@ -216,7 +223,56 @@ async def run(
         {"chunk": chunks[c.chunk_id][0], "document": chunks[c.chunk_id][1], "candidate": c}
         for c in selected_candidates
     ]
+    if settings.ENABLE_NEIGHBOR_EXPANSION and result.selected and not result.abstain:
+        with timer.stage("expand"):
+            await expand_neighbors(db, result.selected)
     yield result
+
+
+def _overlaps(a: Chunk, b: Chunk) -> bool:
+    if None in (a.char_start, a.char_end, b.char_start, b.char_end):
+        return True  # unknown positions: assume overlap rather than repeat text
+    return a.char_start < b.char_end and b.char_start < a.char_end
+
+
+async def expand_neighbors(db: AsyncSession, selected: list[dict]) -> None:
+    """Attach the chunks just before and after each selected passage as item["before"] /
+    item["after"], so the model reads whole thoughts rather than cut-off excerpts.
+
+    A neighbour must be on the same page and in the same section (so the citation's page
+    stays exact), not quarantined, not selected itself, not used for another passage and
+    not overlapping the passage's text. Best-ranked passages are expanded first, while
+    the context stays within CONTEXT_MAX_CHARS."""
+    wanted = {
+        (item["chunk"].document_id, item["chunk"].chunk_index + delta)
+        for item in selected
+        for delta in (-1, 1)
+    }
+    rows = (await db.scalars(
+        select(Chunk).where(
+            tuple_(Chunk.document_id, Chunk.chunk_index).in_(list(wanted)),
+            Chunk.quarantined.is_(False),
+        )
+    )).all()
+    by_position = {(c.document_id, c.chunk_index): c for c in rows}
+    used = {item["chunk"].id for item in selected}
+    total = sum(len(item["chunk"].content) for item in selected)
+    for item in selected:  # already best first
+        chunk = item["chunk"]
+        for key, delta in (("before", -1), ("after", 1)):
+            neighbour = by_position.get((chunk.document_id, chunk.chunk_index + delta))
+            if (
+                neighbour is None
+                or neighbour.id in used
+                or neighbour.page_number != chunk.page_number
+                or neighbour.section_title != chunk.section_title
+                or _overlaps(neighbour, chunk)
+                or total + len(neighbour.content) > settings.CONTEXT_MAX_CHARS
+            ):
+                continue
+            item[key] = neighbour.content
+            used.add(neighbour.id)
+            total += len(neighbour.content)
 
 
 def build_trace(
@@ -238,8 +294,11 @@ def build_trace(
             "chunk_id": str(chunk.id),
             "document_id": str(document.id),
             "filename": document.filename,
+            "document_kind": document.kind or "pdf",
             "page_number": chunk.page_number,
             "section_title": chunk.section_title,
+            "char_start": chunk.char_start,
+            "char_end": chunk.char_end,
             "snippet": chunk.content[:SNIPPET_CHARS],
             "vector_rank": c.vector_rank,
             "keyword_rank": c.keyword_rank,

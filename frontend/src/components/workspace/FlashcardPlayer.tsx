@@ -1,9 +1,11 @@
+import { Download } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import type { FlashcardItem, Source, StudySet } from '../../api/types'
 import { ChevronLeft, ChevronRight } from '../ui/icons'
-import { Button, IconButton } from '../ui/primitives'
+import { Button, IconButton, Menu, cx } from '../ui/primitives'
 import { CitationChip } from './CitationChip'
+import { sourceLabel } from '../../lib/sourceLocation'
 
 function shuffled(n: number): number[] {
   const order = Array.from({ length: n }, (_, i) => i)
@@ -12,6 +14,33 @@ function shuffled(n: number): number[] {
     ;[order[i], order[j]] = [order[j], order[i]]
   }
   return order
+}
+
+/** One field for CSV: quoted, inner quotes doubled. */
+const csvField = (v: string) => `"${v.replace(/"/g, '""')}"`
+
+/** Downloads text as a file named after the deck. */
+function download(filename: string, text: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportDeck(set: StudySet, cards: FlashcardItem[], format: 'csv' | 'anki') {
+  const base = set.title.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'flashcards'
+  if (format === 'csv') {
+    const rows = [['Front', 'Back', 'Source'], ...cards.map((c) => [c.front, c.back, sourceLabel(c.source)])]
+    download(`${base}.csv`, '\ufeff' + rows.map((r) => r.map(csvField).join(',')).join('\r\n'), 'text/csv;charset=utf-8')
+  } else {
+    // Anki's text import: tab-separated front/back, with headers telling it how to read the file.
+    const clean = (v: string) => v.replace(/[\t\r\n]+/g, ' ')
+    const lines = ['#separator:tab', '#html:false', '#notetype:Basic', `#deck:${clean(set.title)}`]
+    lines.push(...cards.map((c) => `${clean(c.front)}\t${clean(c.back)} (${clean(sourceLabel(c.source))})`))
+    download(`${base}-anki.txt`, lines.join('\n'), 'text/plain;charset=utf-8')
+  }
 }
 
 export default function FlashcardPlayer({
@@ -23,13 +52,46 @@ export default function FlashcardPlayer({
   onOpenSource: (source: Source) => void
   onBack: () => void
 }) {
-  const cards = set.items as FlashcardItem[]
-  const [order, setOrder] = useState(() => cards.map((_, i) => i))
+  const deck = set.items as FlashcardItem[]
+  // The cards in this pass: the whole deck, or only the ones marked "Still learning".
+  const [cards, setCards] = useState(deck)
+  const [reviewing, setReviewing] = useState(false)
+  const [learning, setLearning] = useState<Set<number>>(new Set())
+  const [known, setKnown] = useState<Set<number>>(new Set())
+  const [order, setOrder] = useState(() => deck.map((_, i) => i))
   const root = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState(0)
   const [flipped, setFlipped] = useState(false)
 
   const card = cards[order[position]]
+  const marked = learning.size + known.size
+
+  const mark = (stillLearning: boolean) => {
+    const id = order[position]
+    setLearning((s) => {
+      const next = new Set(s)
+      if (stillLearning) next.add(id)
+      else next.delete(id)
+      return next
+    })
+    setKnown((s) => {
+      const next = new Set(s)
+      if (stillLearning) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    if (position < cards.length - 1) go(1)
+  }
+
+  const startPass = (pass: FlashcardItem[], review: boolean) => {
+    setCards(pass)
+    setOrder(pass.map((_, i) => i))
+    setReviewing(review)
+    setLearning(new Set())
+    setKnown(new Set())
+    setPosition(0)
+    setFlipped(false)
+  }
 
   const go = (delta: number) => {
     setPosition((p) => Math.min(Math.max(0, p + delta), cards.length - 1))
@@ -64,11 +126,27 @@ export default function FlashcardPlayer({
           <ChevronLeft size={16} /> Study
         </button>
         <span className="min-w-0 flex-1 truncate text-right text-sm text-muted">{set.title}</span>
+        <Menu
+          trigger={(props) => (
+            <IconButton label="Export deck" {...props}>
+              <Download size={16} />
+            </IconButton>
+          )}
+          items={[
+            { label: 'Export for Anki (.txt)', onSelect: () => exportDeck(set, deck, 'anki') },
+            { label: 'Export as CSV', onSelect: () => exportDeck(set, deck, 'csv') },
+          ]}
+        />
       </div>
 
       <div className="mt-6 flex items-center justify-between text-sm text-muted">
         <span>
-          Card {position + 1} of {cards.length}
+          {reviewing ? 'Review · ' : ''}Card {position + 1} of {cards.length}
+          {marked > 0 && (
+            <span className="ml-2 text-faint">
+              · {known.size} known, {learning.size} still learning
+            </span>
+          )}
         </span>
         <Button
           variant="ghost"
@@ -100,7 +178,7 @@ export default function FlashcardPlayer({
             <span className="text-xs font-medium text-faint">Back</span>
             <span className="font-serif text-xl leading-relaxed">{card.back}</span>
             <span className="text-xs text-faint">
-              {card.source.filename}, page {card.source.page_number}
+              {sourceLabel(card.source)}
             </span>
           </span>
         </button>
@@ -111,11 +189,24 @@ export default function FlashcardPlayer({
           <ChevronLeft />
         </IconButton>
         <div className="flex items-center gap-2 text-sm text-muted">
-          {flipped && (
+          {flipped ? (
             <>
-              <span>Source</span>
               <CitationChip citation={{ n: 1, source: card.source }} onOpen={onOpenSource} />
+              <Button
+                className={cx('h-8 px-2.5', learning.has(order[position]) && 'border-warn text-warn')}
+                onClick={() => mark(true)}
+              >
+                Still learning
+              </Button>
+              <Button
+                className={cx('h-8 px-2.5', known.has(order[position]) && 'border-ok text-ok')}
+                onClick={() => mark(false)}
+              >
+                Got it
+              </Button>
             </>
+          ) : (
+            <span className="text-xs text-faint">Flip to mark the card</span>
           )}
         </div>
         <IconButton
@@ -127,6 +218,16 @@ export default function FlashcardPlayer({
           <ChevronRight />
         </IconButton>
       </div>
+      {(learning.size > 0 || reviewing) && (
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          {learning.size > 0 && (
+            <Button variant="primary" onClick={() => startPass([...learning].map((i) => cards[i]), true)}>
+              Review {learning.size} {learning.size === 1 ? 'card' : 'cards'} still learning
+            </Button>
+          )}
+          {reviewing && <Button onClick={() => startPass(deck, false)}>Back to the full deck</Button>}
+        </div>
+      )}
       <p className="mt-3 text-center text-xs text-faint">Keys: Space to flip, ← → to move</p>
     </div>
   )

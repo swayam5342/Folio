@@ -173,7 +173,7 @@ export default function NotebooksPage() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-8">
         <h1 className="font-serif text-4xl font-semibold tracking-tight">Notebooks</h1>
         <p className="mt-2 max-w-xl text-muted">
-          A notebook holds a set of PDFs you want to ask questions about. Answers only draw on the sources in that
+          A notebook holds a set of sources (PDFs, Word and PowerPoint files, notes) you want to ask questions about. Answers only draw on the sources in that
           notebook.
         </p>
 

@@ -28,8 +28,12 @@ PII_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-class UnsafePDFError(ValueError):
+class UnsafeSourceError(ValueError):
     """A safe, user-displayable upload rejection."""
+
+
+class UnsafePDFError(UnsafeSourceError):
+    """A PDF-specific upload rejection."""
 
 
 @dataclass
@@ -51,6 +55,18 @@ def normalize_untrusted_text(text: str) -> tuple[str, bool]:
     return cleaned, bool(removed)
 
 
+def _mask_pii(text: str, redact: bool) -> tuple[str, dict[str, int]]:
+    """Count (and with redact, mask) the PII in text."""
+    counts: dict[str, int] = {}
+    for name, pattern in PII_RULES:
+        found = len(pattern.findall(text))
+        if found:
+            counts[name] = found
+            if redact:
+                text = pattern.sub(f"[REDACTED {name.upper()}]", text)
+    return text, counts
+
+
 def scan_text(text: str, *, redact_pii: bool = False) -> ScanResult:
     """Return normalized text, explainable injection risk, and optional PII masking."""
     cleaned, had_invisible = normalize_untrusted_text(text)
@@ -63,15 +79,32 @@ def scan_text(text: str, *, redact_pii: bool = False) -> ScanResult:
         if pattern.search(cleaned):
             reasons.append(name)
             score += weight
-
-    counts: dict[str, int] = {}
-    for name, pattern in PII_RULES:
-        matches = list(pattern.finditer(cleaned))
-        if matches:
-            counts[name] = len(matches)
-            if redact_pii:
-                cleaned = pattern.sub(f"[REDACTED {name.upper()}]", cleaned)
+    cleaned, counts = _mask_pii(cleaned, redact_pii)
     return ScanResult(cleaned, min(score, 10), reasons, counts)
+
+
+def sanitize_pages(pages: list[dict], *, redact_pii: bool) -> tuple[list[dict], dict[str, int], bool]:
+    """Normalize (and optionally PII-mask) every block before chunking.
+
+    Doing this per block, before page text is assembled, keeps chunk offsets, stored
+    viewer text and highlights in agreement. Returns (pages, pii_counts, had_invisible);
+    blocks left empty are dropped, and pages left without blocks too."""
+    counts: dict[str, int] = {}
+    had_invisible = False
+    cleaned_pages = []
+    for page in pages:
+        blocks = []
+        for block in page["blocks"]:
+            text, invisible = normalize_untrusted_text(block["text"])
+            had_invisible |= invisible
+            text, found = _mask_pii(text, redact_pii)
+            for name, n in found.items():
+                counts[name] = counts.get(name, 0) + n
+            if text.strip():
+                blocks.append({**block, "text": text.strip()})
+        if blocks:
+            cleaned_pages.append({**page, "blocks": blocks})
+    return cleaned_pages, counts, had_invisible
 
 
 def validate_pdf(data: bytes, *, max_pages: int) -> int:

@@ -19,11 +19,22 @@ def get_model() -> SentenceTransformer:
     return _model
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Embed source passages/documents."""
+EMBED_BATCH = 32
+
+
+def embed_texts(texts: list[str], report=None) -> list[list[float]]:
+    """Embed source passages/documents. report(stage, done, total), when given, hears
+    about every batch so the UI can show "Embedding 120/480"."""
     model = get_model()
-    embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
-    return embeddings.tolist()
+    if report is None:
+        return model.encode(texts, normalize_embeddings=True, show_progress_bar=False).tolist()
+    vectors: list[list[float]] = []
+    for start in range(0, len(texts), EMBED_BATCH):
+        report("embedding", start, len(texts))
+        batch = texts[start:start + EMBED_BATCH]
+        vectors += model.encode(batch, normalize_embeddings=True, show_progress_bar=False).tolist()
+    report("embedding", len(texts), len(texts))
+    return vectors
 
 
 def embed_query(text: str) -> list[float]:

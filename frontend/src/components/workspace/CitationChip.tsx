@@ -1,7 +1,7 @@
 import { TriangleAlert } from 'lucide-react'
 import { motion } from 'motion/react'
 import { HoverCard } from 'radix-ui'
-import { useState, type MouseEvent } from 'react'
+import { useRef, useState, type MouseEvent } from 'react'
 
 import type { Source } from '../../api/types'
 import type { Citation } from '../../lib/citations'
@@ -10,6 +10,8 @@ import { sourceColorStyle } from '../../lib/sourceColors'
 import { highlightSegments } from '../../lib/terms'
 import { useSourceColor } from '../../lib/useSourceColors'
 import { cx } from '../ui/primitives'
+import { formatScore, rerankBar } from '../../lib/scores'
+import { isPaged, sourceLabel, sourceLocation } from '../../lib/sourceLocation'
 
 export type OpenSource = (source: Source, origin?: { x: number; y: number }) => void
 
@@ -29,14 +31,52 @@ function Snippet({ text, terms }: { text: string; terms: string[] }) {
   )
 }
 
-function Relevance({ score }: { score: number }) {
+function ScoreBar({ label, hint, value, width }: { label: string; hint: string; value: string; width: number }) {
   return (
-    <span className="mt-3 flex items-center gap-2 text-xs text-muted">
-      <span className="shrink-0">Relevance</span>
+    <span className="flex items-center gap-2 text-xs text-muted" title={hint}>
+      <span className="w-24 shrink-0">{label}</span>
       <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken" aria-hidden>
-        <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(score * 100, 3)}%` }} />
+        <span className="block h-full rounded-full bg-[var(--src)]" style={{ width: `${Math.max(width * 100, 3)}%` }} />
       </span>
-      <span className="font-mono tabular-nums text-ink">{score.toFixed(2)}</span>
+      <span className="w-9 text-right font-mono tabular-nums text-ink">{value}</span>
+    </span>
+  )
+}
+
+/**
+ * The scores that mean something for a citation: how well the passage supports the claim citing
+ * it (citation check), and how close it is to the question in meaning (embedding similarity).
+ * Older answers without either fall back to the reranker relevance.
+ */
+function CitationScores({ source }: { source: Source }) {
+  const support = source.support_score
+  const similarity = source.similarity
+  if (typeof support !== 'number' && typeof similarity !== 'number') {
+    if (typeof source.score !== 'number') return null
+    return (
+      <span className="mt-3 block">
+        <ScoreBar label="Relevance" hint="Relevance to the question" value={formatScore(source.score)} width={source.score} />
+      </span>
+    )
+  }
+  return (
+    <span className="mt-3 block space-y-1.5">
+      {typeof support === 'number' && (
+        <ScoreBar
+          label="Supports claim"
+          hint="How well this passage backs the sentence that cites it (local cross-encoder check)"
+          value={formatScore(support)}
+          width={rerankBar(support)}
+        />
+      )}
+      {typeof similarity === 'number' && (
+        <ScoreBar
+          label="Question match"
+          hint="How close this passage is to the question in meaning (embedding similarity)"
+          value={formatScore(similarity)}
+          width={similarity}
+        />
+      )}
     </span>
   )
 }
@@ -59,6 +99,9 @@ export function CitationChip({
   const { n, source } = citation
   const color = useSourceColor(source?.document_id)
   const [open, setOpen] = useState(false)
+  // Set by a click: the hover card's open timer (started when the pointer entered) may still fire
+  // after the click, and the viewer opening shifts the chip away, so no "leave" would ever close it.
+  const suppressed = useRef(false)
 
   if (!source) {
     return (
@@ -71,19 +114,30 @@ export function CitationChip({
   const low = source.support === 'low'
   const click = (e: MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
+    suppressed.current = true
+    setOpen(false)
     onOpen?.(source, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
   }
 
   return (
-    <HoverCard.Root open={open} onOpenChange={setOpen} openDelay={150} closeDelay={80}>
+    <HoverCard.Root
+      open={open}
+      onOpenChange={(next) => setOpen(next && suppressed.current ? false : next)}
+      openDelay={150}
+      closeDelay={80}
+    >
       <HoverCard.Trigger asChild>
         <button
           type="button"
           onClick={click}
-          onFocus={() => setOpen(true)}
+          onPointerEnter={() => {
+            suppressed.current = false
+          }}
+          // Keyboard focus shows the card; a mouse click (which also focuses) shouldn't pin it open.
+          onFocus={(e) => e.currentTarget.matches(':focus-visible') && setOpen(true)}
           onBlur={() => setOpen(false)}
           style={sourceColorStyle(color)}
-          aria-label={`Source ${n}: ${source.filename}, page ${source.page_number}${low ? ' (low support)' : ''}`}
+          aria-label={`Source ${n}: ${sourceLabel(source)}${low ? ' (low support)' : ''}`}
           className={cx(
             'relative ml-0.5 inline-flex h-[1.3em] min-w-[1.5em] items-center justify-center gap-0.5 rounded-sm px-1 align-[0.12em] font-sans text-[0.68em] font-semibold leading-none',
             'bg-[var(--src-soft)] text-[var(--src-ink)] ring-1 ring-[var(--src)]/40 transition-transform hover:-translate-y-px',
@@ -106,13 +160,13 @@ export function CitationChip({
             <span className="flex items-center gap-2">
               <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-[var(--src)]" />
               <span className="min-w-0 truncate font-medium">{source.filename}</span>
-              <span className="ml-auto shrink-0 font-mono text-xs text-muted">p. {source.page_number}</span>
+              {isPaged(source) && <span className="ml-auto shrink-0 font-mono text-xs text-muted">{sourceLocation(source)}</span>}
             </span>
             {source.section_title && <span className="mt-1 block truncate text-xs text-muted">{source.section_title}</span>}
             <span className="mt-2 line-clamp-5 block border-l-2 border-[var(--src)] pl-2.5 text-muted">
               <Snippet text={source.snippet} terms={terms} />
             </span>
-            {typeof source.score === 'number' && <Relevance score={source.score} />}
+            <CitationScores source={source} />
             {low && (
               <span className="mt-3 flex gap-2 rounded-md bg-warn-soft px-2.5 py-2 text-xs text-warn">
                 <TriangleAlert aria-hidden size={14} className="mt-px shrink-0" />
@@ -122,7 +176,7 @@ export function CitationChip({
                 </span>
               </span>
             )}
-            <span className="mt-2.5 block text-xs text-faint">Click to open the page</span>
+            <span className="mt-2.5 block text-xs text-faint">{source.document_kind === 'pptx' ? 'Click to open the slide' : isPaged(source) ? 'Click to open the page' : 'Click to open the passage'}</span>
           </motion.div>
         </HoverCard.Content>
       </HoverCard.Portal>
