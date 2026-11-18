@@ -14,7 +14,7 @@
 [![Docker](https://img.shields.io/badge/run%20with-Docker%20Compose-4cb3f0?style=flat-square&logo=docker&logoColor=white&labelColor=0d3a55)](#option-a-docker-compose-recommended)
 [![Hit@1](https://img.shields.io/badge/Hit%401-93%25-4cb3f0?style=flat-square&logo=target&logoColor=white&labelColor=0d3a55)](#evaluation)
 
-[**Website**](https://github.swayam.li/Folio/) &nbsp;&middot;&nbsp; [How It Works](#how-it-works) &nbsp;&middot;&nbsp; [Evaluation](#evaluation) &nbsp;&middot;&nbsp; [Configuration](#configuration) &nbsp;&middot;&nbsp; [API Reference](#api-reference)
+[**Website**](https://github.swayam.li/Folio/) &nbsp;&middot;&nbsp; [How It Works](#how-it-works) &nbsp;&middot;&nbsp; [Evaluation](#evaluation) &nbsp;&middot;&nbsp; [Running Folio](#running-folio) &nbsp;&middot;&nbsp; [Limitations](#limitations)
 
 <br>
 
@@ -30,7 +30,7 @@
 | :--- | :--- |
 | **Overview** | [Features](#features) &middot; [How It Works](#how-it-works) &middot; [Evaluation](#evaluation) |
 | **Setup** | [Running Folio](#running-folio) &middot; [Option A: Docker Compose (Recommended)](#option-a-docker-compose-recommended) &middot; [Option B: Development (Hot Reload)](#option-b-development-hot-reload) |
-| **Reference** | [Configuration](#configuration) &middot; [API Reference](#api-reference) &middot; [Project Layout](#project-layout) &middot; [Design Decisions](#design-decisions) |
+| **Reference** | [Design Decisions](#design-decisions) |
 | **Trust** | [Security and Threat Model](#security-and-threat-model) &middot; [Limitations](#limitations) &middot; [Changelog: Review 1 → Review 2](#changelog-review-1--review-2) |
 | **Testing** | [Verification & Testing](#verification--testing) |
 
@@ -40,33 +40,18 @@
 
 | Feature | What it means |
 | :--- | :--- |
-| **Accounts** | Username and password sign-in. Each user only sees their own notebooks, files and chats. |
-| **Notebooks** | Create, rename and delete notebooks; each holds its own set of sources and its own chat. |
-| **Many kinds of source** | Drag-and-drop PDF, Word (`.docx`), PowerPoint (`.pptx`), Markdown and text files (up to 50 MB each), or paste text with a title. Files are indexed in the background with a live "processing → ready / failed" status. Scanned PDF pages with no text layer are read with OCR (RapidOCR, local and offline). Slides are cited as "slide N" (speaker notes included); Word, Markdown and text sources are cited by section and open in a reader view with the passage highlighted. |
-| **Source summaries** | After indexing, each source gets a short overview (one small Groq call), shown in the Sources panel and given to the model as orientation for "summarize everything" questions. |
-| **Tables kept whole** | Tables in PDFs, Word, PowerPoint and Markdown become Markdown tables and are chunked on their own (large ones split by rows with the header repeated), so answers can read rows and columns. |
-| **Cited answers** | Answers stream in word by word. Folio measures valid citation coverage, refuses completely uncited generations and warns on partially uncited answers. Hovering a citation shows the snippet; clicking opens the page with the passage highlighted. |
-| **Quizzes and flashcards** | A multiple-choice quiz (5, 10 or 15 questions; easy, medium or hard) or a flashcard deck (10, 20 or 30 cards) from chosen sources and an optional focus topic. Every item cites its source; sets and scores are saved per notebook. **Review mistakes** replays only wrong answers; cards can be marked *Got it* / *Still learning*. Decks export to **Anki** (tab-separated) or **CSV**. |
-| **Studio** | One click writes a **study guide**, **FAQ**, **timeline** or **glossary**, every item with a citation chip. A timeline is refused politely when the sources have no dated or ordered events. Any studio document can be copied or saved to notes. |
-| **Notebook overview** | Before the first question, the chat shows each source's summary and suggested questions (written with the summary, no extra LLM call). |
-| **Chats and notes** | Several chat threads per notebook (named after their first question; rename, clear or delete). The latest answer can be **regenerated** (skipping the answer cache), any answer **copied with its source list** or **saved to notes**, where citation chips keep working. You can write your own notes too. |
-| **Exact-term search** | Retrieval combines vector search with keyword search, so course codes and function names find the right page. |
-| **Smarter retrieval** | Follow-ups ("why is it slower?") are rewritten into standalone questions and a local cross-encoder reranks the candidates. Each chosen passage comes with the chunks just before and after it (same page and section). Multi-query paraphrasing is available but off by default (it lowered Hit@1 once reranking was on). |
-| **Answer cache** | The same question over unchanged sources returns the stored answer instantly (`ENABLE_ANSWER_CACHE`). Follow-ups are matched on their rewritten form; adding, removing or re-indexing a source invalidates old answers. Queries use BGE's asymmetric search instruction; summaries use a larger, source-balanced context, focused questions a compact de-duplicated one. |
-| **Section-aware chunks** | Headings and code blocks are detected from the PDF's fonts; chunks follow sections and paragraphs and carry their section title, which is embedded with them. |
-| **Choose your sources** | Tick the sources a question should search; the rest are ignored for that answer. |
-| **Knows when it doesn't know** | Each answer shows a confidence badge. When nothing matches, Folio says so and lists the closest passages instead of guessing. |
-| **"How was this answered?"** | Every answer opens a retrieval trace: the rewritten query and variants, every candidate with its vector, keyword, fused and rerank scores, which ones the model saw, per-stage timings and token counts. |
-| **Measured, not claimed** | An evaluation harness runs 50 questions over four sample PDFs through the real pipeline, one stage at a time. See [Evaluation](#evaluation) and the in-app **Evaluation** page (`/evaluation`). |
-| **Follow-up questions** | Chat history is saved per notebook and the last few turns go with each question, so "tell me more about that" works. |
-| **Grounded by design** | The model is told to answer only from the retrieved excerpts and to say so when they don't contain the answer. |
-| **PDF viewer toolbar** | Page jump, zoom (50–300 %), search inside the PDF (every matching page listed, matches highlighted), a sidebar of lazily rendered thumbnails or the PDF's own contents, and download. |
-| **Live indexing progress** | "Reading page 12 of 240", "OCR on page 3 of 40", "Embedding 96 of 480 passages", with a progress bar. |
-| **Production touches** | Hashed passwords, httpOnly session cookies, login rate limiting, database migrations, upload validation, graceful handling of the LLM's free-tier rate limits, and a mobile layout. |
-| **Hostile-source protection** | PDFs are deeply parsed before storage; encrypted files, active scripts and launch actions, embedded files and excessive page counts are rejected. Invisible Unicode is normalized, likely prompt-injection passages are quarantined, and optional per-notebook masking covers Aadhaar, PAN, email and Indian phone numbers. The source list explains detected risks. |
-| **Design system** | One set of tokens drives three themes (Light, Dark, Aurora), eight source colors, self-hosted variable fonts (Fraunces, Inter, JetBrains Mono), glass, grain and glow effects and spring motion. **Calm mode** turns off grain and animation, and reduced-motion settings are respected. Every text/background pairing is checked against WCAG AA in the frontend tests. The living style guide is at `/design` (no sign-in needed). |
-| **Observability** | Structured JSON logs with a request id on every line (echoed as `X-Request-ID`), one line per request with status and duration, and per-stage timings (plan, embed, search, rerank, generate) for each answer. |
-| **Feature flags** | Optional pipeline stages can be switched off in `.env` (`ENABLE_*`) so the evaluation harness can measure what each adds; `GET /api/features` reports the active set. |
+| **Many kinds of source** | PDF, Word, PowerPoint, Markdown, text and pasted text, up to 50 MB each. Scanned pages are read with local OCR; slides are cited as "slide N". |
+| **Cited answers** | Answers stream in with a citation on every claim. Click one to open the page with the passage highlighted; uncited answers are refused or flagged. |
+| **Hybrid retrieval** | Vector plus keyword search, follow-up rewriting and a local cross-encoder reranker, with section-aware chunks and tables kept whole. |
+| **Knows when it doesn't know** | A confidence badge on every answer. When nothing matches, Folio says so and shows the closest passages. |
+| **Retrieval trace** | "How was this answered?" shows every candidate passage with its scores, per-stage timings and token counts. |
+| **Study tools** | Cited quizzes and flashcards (export to Anki or CSV), plus a one-click study guide, FAQ, timeline or glossary. |
+| **Chats and notes** | Several threads per notebook; regenerate, copy or save any answer to notes with its citations intact. |
+| **Hostile-source protection** | Active or encrypted PDFs are rejected, prompt-injection passages quarantined, and optional PII masking per notebook. |
+| **Accounts** | Hashed passwords, httpOnly session cookies and login rate limiting; each user sees only their own notebooks. |
+| **Measured** | An evaluation harness and an in-app **Evaluation** page. See [Evaluation](#evaluation). |
+
+All settings live in `.env`; [`.env.example`](.env.example) lists every one with its default.
 
 <br>
 
@@ -235,193 +220,6 @@ npm run dev
 > Vite forwards `/api` to `http://localhost:8000`; to use another port, start it with `API_TARGET=http://localhost:8001 npm run dev`. Interactive API docs are at <http://localhost:8000/docs>. Set `LOG_FORMAT=text` for readable logs.
 
 The backend reads the `.env` at the repository root. After changing the database models, add a migration in `backend/alembic/versions/`.
-
-<br>
-
-## Configuration
-
-All settings come from `.env` (see `.env.example`).
-
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `GROQ_API_KEY` | none | Required. Groq key for answer generation. |
-| `JWT_SECRET` | none | Required. Signs session cookies; startup fails without it. |
-| `GROQ_MODEL` | `openai/gpt-oss-120b` | Chat model on Groq. |
-| `POSTGRES_PASSWORD` | `ragpass` | Database password used by Docker Compose. |
-| `DATABASE_URL` | localhost | Database URL when running the backend outside Docker. |
-| `MAX_UPLOAD_MB` | `50` | Largest accepted file (or pasted text). |
-| `MAX_PDF_PAGES` | `1000` | Maximum pages accepted after parsing. |
-| `COOKIE_SECURE` | `false` | Set `true` when serving over HTTPS. |
-| `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `BAAI/bge-small-en-v1.5` / `384` | Local embedding model. |
-| `CHUNK_SIZE` / `CHUNK_OVERLAP` | `800` / `150` | Chunking, in characters. |
-| `CHUNK_STRATEGY` | `structured` | `structured` (sections and paragraphs) or `fixed` (plain window). Re-index after changing. |
-| `TOP_K` | `6` | Excerpts given to the model per question. |
-| `BROAD_TOP_K` | `12` | Source-balanced excerpt budget for summaries and overviews. |
-| `CONTEXT_MAX_CHARS` | `18000` | Hard character budget for assembled source context. |
-| `MAX_CHUNKS_PER_DOCUMENT` | `4` | Diversity cap before fallback fills unused context. |
-| `RETRIEVE_K` | `30` | Candidates per search, and how many the reranker scores. |
-| `QUERY_VARIANTS` | `2` | Paraphrases searched alongside the question. |
-| `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L6-v2` | Local cross-encoder (`BAAI/bge-reranker-base` is more accurate, ~10× slower). |
-| `CONFIDENCE_HIGH` / `CONFIDENCE_LOW` | `0.5` / `0.01` | Reranker score (0-1) for high confidence / below which (with low similarity) the answer abstains. |
-| `SIMILARITY_HIGH` / `SIMILARITY_LOW` | `0.75` / `0.60` | Embedding-similarity thresholds for the same gate (tuned on the eval set: no answerable question refused). |
-| `HISTORY_MESSAGES` | `6` | Previous messages sent for follow-up context. |
-| `LOG_LEVEL` | `INFO` | Log level. |
-| `LOG_FORMAT` | `json` | `json` (one object per line) or `text` (readable, for development). |
-| `ENABLE_HYBRID_SEARCH` | `true` | `false` = vector search only, the evaluation baseline. |
-| `ENABLE_QUERY_REWRITE` | `true` | Rewrite follow-ups into standalone questions. |
-| `ENABLE_MULTI_QUERY` | `false` | Also search `QUERY_VARIANTS` paraphrases (off: it lowered Hit@1 with reranking on). |
-| `ENABLE_HYDE` | `false` | Also search with a hypothetical answer (costs extra tokens). |
-| `ENABLE_RERANKER` | `true` | Cross-encoder reranking. |
-| `ENABLE_ABSTENTION` | `true` | Say "not in your sources" on low confidence instead of answering. |
-| `ENABLE_CITATION_CHECK` | `true` | Verify cited claim/excerpt pairs with the local cross-encoder. |
-| `MIN_CITATION_COVERAGE` | `0.8` | Minimum fraction of substantive claims with a valid citation before warning. |
-| `ENABLE_PROMPT_INJECTION_SCAN` | `true` | Quarantine high-risk instructions embedded in source text. |
-| `ENABLE_PII_REDACTION` | `true` | Enable per-notebook masking while indexing. |
-| `ENABLE_NEIGHBOR_EXPANSION` | `true` | Give the model the chunks around each chosen passage (same page and section). |
-| `ENABLE_ANSWER_CACHE` | `true` | Reuse stored answers for repeat questions over unchanged sources (always off in the eval harness). |
-| `ENABLE_SOURCE_SUMMARIES` | `true` | Write a short summary of each source after indexing (one Groq call per source). |
-| `EVAL_RESULTS_PATH` | `backend/eval/results/latest.json` | Results file served to the Evaluation page. |
-
-<br>
-
-## API Reference
-
-All endpoints are under `/api`. Authentication is a session cookie set by register or login. Resources owned by another user return `404`. Every response carries an `X-Request-ID` header (a well-formed incoming one is reused), which matches the `request_id` in the server logs.
-
-| Method | Route | Purpose | Auth |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/auth/register` | Create an account and sign in | none |
-| `POST` | `/auth/login` | Sign in (10 failed attempts per 15 min → `429`) | none |
-| `POST` | `/auth/logout` | Sign out | cookie |
-| `GET` | `/auth/me` | Current user | cookie |
-| `GET` `POST` | `/notebooks` | List / create notebooks | cookie |
-| `GET` `PATCH` `DELETE` | `/notebooks/{id}` | Get / rename / delete a notebook | cookie |
-| `GET` `POST` | `/notebooks/{id}/documents` | List / upload sources (`.pdf`, `.docx`, `.pptx`, `.md`, `.txt`) | cookie |
-| `POST` | `/notebooks/{id}/documents/text` | Add pasted text (`{"title", "text"}`) as a source | cookie |
-| `GET` `DELETE` | `/documents/{id}` | Document status (incl. `kind`, `summary`) / delete | cookie |
-| `GET` | `/documents/{id}/file` | The original file (PDFs inline, others as a download) | cookie |
-| `GET` | `/documents/{id}/pages` | Page text of a non-PDF source with block offsets, for the reader view | cookie |
-| `POST` | `/documents/{id}/reindex` | Re-chunk and re-embed with the current `CHUNK_STRATEGY` (`409` while processing) | cookie |
-| `GET` `POST` | `/notebooks/{id}/threads` | List (most recent first) / create chat threads | cookie |
-| `PATCH` `DELETE` | `/threads/{id}` | Rename / delete a thread | cookie |
-| `GET` `DELETE` | `/threads/{id}/messages` | A thread's messages / clear it | cookie |
-| `DELETE` | `/messages/{id}` | Remove a thread's latest message (before regenerating; `409` otherwise) | cookie |
-| `GET` `DELETE` | `/notebooks/{id}/messages` | Every message in the notebook / clear all | cookie |
-| `POST` | [`/notebooks/{id}/chat`](#post-notebooksidchat---ask-a-question) | Ask a question; streams the answer | cookie |
-| `GET` `POST` | `/notebooks/{id}/notes` | List / create notes (`{"title", "content", "sources"?}`) | cookie |
-| `PATCH` `DELETE` | `/notes/{id}` | Edit / delete a note | cookie |
-| `GET` | `/messages/{id}/trace` | Retrieval trace of an answer: queries, candidates with all scores, timings, tokens | cookie |
-| `GET` `POST` | `/notebooks/{id}/study-sets` | List / generate quizzes, flashcards, study guides, FAQs, timelines and glossaries (`{"kind", "count", "difficulty"?, "topic"?, "document_ids"?}`) | cookie |
-| `GET` `DELETE` | `/study-sets/{id}` | Open / delete a study set | cookie |
-| `POST` | `/study-sets/{id}/score` | Save a quiz score | cookie |
-| `GET` | `/eval/results` | Latest evaluation summary (sample corpus only) | none |
-| `GET` | [`/health`](#get-health---liveness-check) | Liveness check | none |
-| `GET` | [`/features`](#get-features---active-feature-flags) | Active feature flags | none |
-
-### `POST /notebooks/{id}/chat` - Ask a Question
-
-Streams Server-Sent Events: `stage` events while the answer is prepared, `token` events as it is written, then `done` or `error`.
-
-<details open>
-<summary><b>Request body</b></summary>
-
-```json
-{ "question": "Who leads Project Falcon?", "document_ids": [], "thread_id": null, "regenerate": false }
-```
-
-Only `question` is required. `document_ids` limits the search to those sources; `regenerate` skips the answer cache.
-
-</details>
-
-### `GET /health` - Liveness Check
-
-Process liveness only; it does not claim dependencies are ready. **Status Code:** `200 OK`
-
-<details>
-<summary><b>Response</b></summary>
-
-```json
-{ "status": "ok" }
-```
-
-</details>
-
-### `GET /features` - Active Feature Flags
-
-Every `ENABLE_*` setting, keyed by its lower-case name without the prefix. No secrets; used by the UI and the evaluation harness. The response below is shortened.
-
-<details>
-<summary><b>Response</b></summary>
-
-```json
-{
-  "hybrid_search": true,
-  "query_rewrite": true,
-  "multi_query": false,
-  "hyde": false,
-  "reranker": true,
-  "abstention": true
-}
-```
-
-</details>
-
-<br>
-
-## Project Layout
-
-```text
-backend/                   FastAPI backend (Python, managed with uv)
-  app/
-    main.py                app setup, startup tasks
-    reindex.py             CLI: re-index documents after a chunking change
-    config.py              settings and feature flags from the root .env
-    observability.py       JSON logging, request ids, stage timer
-    models.py              User, Notebook, Document, Chunk, Message
-    security.py            password hashing, session tokens, login rate limit
-    deps.py                current user + ownership checks
-    routers/               auth, notebooks, documents, chat, threads, notes, study
-    services/
-      ingest.py            background processing: extract → sanitize → chunk → embed
-      extractors.py        every source kind → pages of blocks; upload validation
-      pdf_parser.py        PDF → text per page, blocks labelled heading/code/body/table
-      summaries.py         per-source summary after indexing
-      answer_cache.py      stored answers for repeat questions
-      chunking.py          structured (section-aware) or fixed-window chunks
-      embeddings.py        local sentence-transformers model
-      query_planner.py     query rewrite, multi-query, HyDE (one LLM call)
-      retrieval.py         hybrid vector + keyword search per query (RRF)
-      reranker.py          local cross-encoder
-      pipeline.py          plan → search → rerank → confidence gate, trace
-      ocr.py               OCR for pages without a text layer
-      study.py             quizzes, flashcards and studio documents (guide, FAQ, timeline, glossary)
-      progress.py          live indexing progress (in memory)
-      llm.py               prompt, Groq streaming, citation parsing
-      storage.py           uploaded files (and reader text) on disk
-  eval/                    evaluation harness
-    samples.py             sample-corpus content (one HTML fragment per PDF page)
-    build_samples.py       renders it to docs/samples/*.pdf
-    dataset.jsonl          50 questions with gold pages and key facts
-    run_eval.py            runs the configuration ladder, writes results
-    metrics.py, report.py  Hit@k / MRR / answer metrics; Markdown + chart
-    results/latest.json    latest full run (served to the Evaluation page)
-  alembic/                 database migrations
-  tests/                   pytest (unit + API tests against Postgres)
-  Dockerfile               backend image
-  pyproject.toml, uv.lock  Python dependencies
-frontend/                  React + TypeScript (Vite, Tailwind, TanStack Query, react-pdf)
-  src/api/                 API client, SSE stream reader, data hooks
-  src/pages/               sign-in, notebooks, workspace, evaluation, design (style guide)
-  src/components/          sources panel, chat, retrieval trace, PDF viewer, UI parts
-  src/styles/tokens.css    design tokens: themes, source colors, shape, motion
-  src/lib/                 theme store, source colors, motion tokens, contrast math
-  nginx.conf               serves the app and proxies /api
-docs/samples/              sample PDFs (the evaluation corpus; also good demo sources)
-docs/eval/                 latest evaluation report and chart
-site/                      project website (GitHub Pages)
-docker-compose.yml         db + backend + frontend
-.env.example               configuration template (copy to .env)
-```
 
 <br>
 
