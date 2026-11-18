@@ -29,7 +29,7 @@
 | | |
 | :--- | :--- |
 | **Overview** | [Features](#features) &middot; [How It Works](#how-it-works) &middot; [Evaluation](#evaluation) |
-| **Setup** | [Prerequisites](#prerequisites) &middot; [Running Folio](#running-folio) &middot; [Option A: Docker Compose (Recommended)](#option-a-docker-compose-recommended) &middot; [Option B: Development (Hot Reload)](#option-b-development-hot-reload) |
+| **Setup** | [Running Folio](#running-folio) &middot; [Option A: Docker Compose (Recommended)](#option-a-docker-compose-recommended) &middot; [Option B: Development (Hot Reload)](#option-b-development-hot-reload) |
 | **Reference** | [Configuration](#configuration) &middot; [API Reference](#api-reference) &middot; [Project Layout](#project-layout) &middot; [Design Decisions](#design-decisions) |
 | **Trust** | [Security and Threat Model](#security-and-threat-model) &middot; [Limitations](#limitations) &middot; [Changelog: Review 1 → Review 2](#changelog-review-1--review-2) |
 | **Testing** | [Verification & Testing](#verification--testing) |
@@ -123,11 +123,7 @@ flowchart LR
 
 ### Generating a Quiz or Flashcards
 
-| | Step | What happens |
-| :---: | :--- | :--- |
-| 1 | **Choose excerpts** | Within a budget that fits Groq's free tier (8,000 tokens per minute): with a focus topic, the best hybrid-search matches; without one, an even spread across the selected sources. |
-| 2 | **Generate** | The model returns JSON in which every item cites an excerpt label. |
-| 3 | **Check and save** | Malformed items and items citing a missing excerpt are dropped, answer positions are shuffled, each citation resolves to a file and page, and the set is saved. |
+Excerpts are chosen within a budget that fits Groq's free tier (8,000 tokens per minute): the best hybrid-search matches for a focus topic, otherwise an even spread across the selected sources. The model returns JSON in which every item cites an excerpt label; malformed items and items citing a missing excerpt are dropped, answer positions are shuffled, and each citation resolves to a file and page.
 
 <br>
 
@@ -146,14 +142,7 @@ Every retrieval stage was measured, not assumed. The harness in `backend/eval/` 
 | + reranker & confidence gate | 91% | 95% | 0.937 | 43% | 0% |
 | + structure-aware chunks (v2) | **93%** | **98%** | **0.952** | 29% | 0% |
 
-With the full pipeline, answers were generated with the chat prompt and graded by a second model (`openai/gpt-oss-20b`):
-
-| Measure | Result |
-| :--- | :--- |
-| Citations pointing to a correct page | **96%** |
-| Claims supported by the cited excerpts | **95%** |
-| Expected key facts stated | **96%** |
-| Unanswerable questions handled | **7 of 7**: 2 refused by the confidence gate, 5 declined by the model |
+With the full pipeline, answers were graded by a second model (`openai/gpt-oss-20b`): **96%** of citations point to a correct page, **95%** of claims are supported by the cited excerpts, **96%** of expected key facts are stated, and **all 7** unanswerable questions were handled (two refused by the confidence gate, five declined by the model).
 
 | Finding | Detail |
 | :--- | :--- |
@@ -178,20 +167,11 @@ python -m eval.run_eval --smoke          # no LLM, 12 questions
 
 <br>
 
-## Prerequisites
-
-| Requirement | When |
-| :--- | :--- |
-| **Docker Desktop** | Always: the database, and the whole app in Option A. |
-| **Groq API key** | Always. Free at <https://console.groq.com/keys>. |
-| **[uv](https://docs.astral.sh/uv/) and Python 3.13+** | Development only (Option B). |
-| **Node.js 22+** | Development only (Option B). |
-
-<br>
-
 ## Running Folio
 
 ### Option A: Docker Compose (Recommended)
+
+Needs Docker Desktop and a free Groq API key from <https://console.groq.com/keys>.
 
 **1. Create the config**
 
@@ -199,12 +179,13 @@ python -m eval.run_eval --smoke          # no LLM, 12 questions
 cp .env.example .env
 ```
 
-**2. Set the two required values in `.env`**
+**2. Set `GROQ_API_KEY` and `JWT_SECRET` in `.env`**
 
-| Variable | Value |
-| :--- | :--- |
-| `GROQ_API_KEY` | Your Groq key. |
-| `JWT_SECRET` | Any long random string. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+For `JWT_SECRET`, any long random string works:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
 > [!IMPORTANT]
 > `JWT_SECRET` signs every session cookie: anyone who knows it can forge one. The backend refuses to start while it is empty or still the placeholder from `.env.example`.
@@ -389,23 +370,6 @@ Every `ENABLE_*` setting, keyed by its lower-case name without the prefix. No se
 
 ## Project Layout
 
-| Path | Responsibility |
-| :--- | :--- |
-| `backend/app/` | FastAPI app: setup, settings and feature flags, logging, models, security, routers and services. |
-| `backend/app/services/` | Ingestion, extraction, chunking, embeddings, query planning, retrieval, reranking, the pipeline, OCR, study sets, LLM calls and storage. |
-| `backend/eval/` | Evaluation harness: sample corpus, 50-question dataset, configuration ladder, metrics and report. |
-| `backend/alembic/` | Database migrations. |
-| `backend/tests/` | pytest (unit + API tests against Postgres). |
-| `frontend/` | React + TypeScript (Vite, Tailwind, TanStack Query, react-pdf), served by nginx, which also proxies `/api`. |
-| `docs/samples/` | Sample PDFs (the evaluation corpus; also good demo sources). |
-| `docs/eval/` | Latest evaluation report and chart. |
-| `site/` | The project website, deployed to GitHub Pages. |
-| `docker-compose.yml` | db + backend + frontend. |
-| `.env.example` | Configuration template (copy to `.env`). |
-
-<details>
-<summary><b>Full tree</b></summary>
-
 ```text
 backend/                   FastAPI backend (Python, managed with uv)
   app/
@@ -458,8 +422,6 @@ site/                      project website (GitHub Pages)
 docker-compose.yml         db + backend + frontend
 .env.example               configuration template (copy to .env)
 ```
-
-</details>
 
 <br>
 
