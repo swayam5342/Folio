@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folio: every claim, back to its page</title>
+<meta name="description" content="A NotebookLM-style app for asking questions about your own PDFs, Word files and slides. Every claim in the answer cites its page. FastAPI, Postgres/pgvector, React and a free Groq LLM, started with one docker compose up.">
+<meta name="theme-color" content="#000000">
+<link rel="canonical" href="https://github.swayam.li/Folio/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://github.swayam.li/Folio/">
+<meta property="og:title" content="Folio: every claim, back to its page">
+<meta property="og:description" content="Ask questions about your own documents. Every claim is cited; click it to open the page with the passage highlighted.">
+<meta property="og:image" content="https://github.swayam.li/Folio/assets/workspace-dark.webp">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="style.css">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav wrap">
+  <a class="wordmark" href="#top" aria-label="Folio, back to top">
+    <svg viewBox="0 0 44 44" aria-hidden="true"><rect x="4" y="2" width="28" height="38" fill="#f2f2f2"/><rect x="10" y="12" width="16" height="3" fill="#000"/><rect x="10" y="19" width="16" height="5" fill="#4cb3f0"/><rect x="10" y="28" width="11" height="3" fill="#000"/><rect x="28" y="28" width="14" height="14" fill="#4cb3f0"/></svg>Folio
+  </a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a class="link" href="#cite">Citations</a></li>
+      <li><a class="link" href="#pipeline">Pipeline</a></li>
+      <li><a class="link" href="#eval">Evaluation</a></li>
+      <li><a class="link" href="#study">Study</a></li>
+      <li><a class="link" href="#run">Run it</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="hero wrap" id="top" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <p class="eyebrow">FastAPI · Postgres + pgvector · React · Groq</p>
+    <h1 id="hero-title" class="display">Every claim, back to its page<span class="dot">.</span></h1>
+    <div class="hero-side">
+      <p class="lede">Folio is a NotebookLM-style app for your own documents: PDFs, Word files, PowerPoint decks, Markdown and pasted text. Ask a question and every claim in the answer carries a citation. Click it and the source opens at that page, with the passage highlighted.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/swayam5342/Folio">Get it on GitHub</a>
+        <a class="link" href="#run">Run it with one command</a>
+      </div>
+    </div>
+  </div>
+  <figure class="shot">
+    <img src="assets/workspace-dark.webp" width="1440" height="900" alt="The Folio workspace: a sources list, a chat answer about Project Falcon with numbered citation chips, and the PDF viewer open at page 2 with the cited sentence highlighted.">
+  </figure>
+</section>
+
+<!-- Interactive citation demo -->
+<section class="cite wrap" id="cite" aria-labelledby="cite-title">
+  <div class="sec-head">
+    <h2 id="cite-title" class="head">Click a citation. Land on the passage.</h2>
+    <p>The model sees numbered excerpts and must cite every claim as a marker. Folio parses the markers into sources, drops any that don't match a retrieved excerpt, and warns when part of an answer goes uncited. Try the chips below.</p>
+  </div>
+  <div class="cite-demo">
+    <div class="answer panel">
+      <p class="q">Who leads Project Falcon, and what was its budget?</p>
+      <ul class="claims" role="list">
+        <li>Project Falcon is led by <b>Dr. Priya Rao</b><button class="chip" type="button" data-c="0" aria-label="Citation 1: text.pdf, page 2">1</button>.</li>
+        <li>The team has <b>14 engineers</b> based in Pune<button class="chip" type="button" data-c="0" aria-label="Citation 1: text.pdf, page 2">1</button>.</li>
+        <li>It launched with a budget of <b>2 million dollars</b><button class="chip" type="button" data-c="1" aria-label="Citation 2: text.pdf, page 1">2</button>.</li>
+        <li>Phase two targets <b>satellite imaging</b><button class="chip" type="button" data-c="2" aria-label="Citation 3: text.pdf, page 3">3</button>.</li>
+      </ul>
+      <ol class="srcs" role="list">
+        <li><span class="chip chip-s">1</span>text.pdf, page 2</li>
+        <li><span class="chip chip-s">2</span>text.pdf, page 1</li>
+        <li><span class="chip chip-s">3</span>text.pdf, page 3</li>
+      </ol>
+      <p class="badge-row"><span class="badge">High confidence</span><span class="badge badge-ok">4 of 4 claims cited</span></p>
+    </div>
+    <div class="viewer" aria-live="polite">
+      <div class="viewer-bar"><span>text.pdf</span><span id="pg">page 2 / 3</span></div>
+      <div class="page" id="page"></div>
+    </div>
+  </div>
+  <p class="demo-note">A demo modelled on the Project Falcon notebook in Folio's screenshots. In the app, hovering a chip shows the snippet and clicking opens the real PDF at that page.</p>
+</section>
+
+<!-- Pipeline -->
+<section class="pipe wrap" id="pipeline" aria-labelledby="pipe-title">
+  <div class="sec-head">
+    <h2 id="pipe-title" class="head">From question to cited answer</h2>
+    <p>Embeddings and reranking run locally on the CPU, so the only calls leaving your machine go to Groq's free tier: one small call to plan and one to answer. Every answer keeps a full trace you can open: queries, every candidate with its vector, keyword, fused and rerank scores, timings and tokens.</p>
+  </div>
+  <ol class="steps" role="list">
+    <li><span class="n">1</span><h3>Plan</h3><p>One small, cached LLM call rewrites a follow-up into a standalone question. Skipped when there's nothing to do; on a rate limit the question is searched as asked.</p></li>
+    <li><span class="n">2</span><h3>Search</h3><p>Each query is embedded locally with <code>bge-small-en-v1.5</code>, then runs pgvector (HNSW) and Postgres full-text search. Reciprocal rank fusion keeps 30 candidates.</p></li>
+    <li><span class="n">3</span><h3>Rerank</h3><p>A local cross-encoder, <code>ms-marco-MiniLM-L6-v2</code>, reads the question with each candidate. The top six go on, each with its neighbouring chunks.</p></li>
+    <li><span class="n">4</span><h3>Confidence gate</h3><p>Abstain only when the reranker <em>and</em> embedding similarity are both weak. Then Folio says so and shows the closest passages instead of guessing.</p></li>
+    <li><span class="n">5</span><h3>Answer</h3><p>Excerpts go to the model labelled <code>[C1]…[C6]</code> with file, page and section. Stage names, then tokens, stream over Server-Sent Events.</p></li>
+    <li><span class="n">6</span><h3>Check citations</h3><p>Markers become structured sources. Each claim and excerpt pair is verified by the cross-encoder; uncited answers are refused or flagged.</p></li>
+  </ol>
+</section>
+
+<!-- Evaluation -->
+<section class="eval wrap" id="eval" aria-labelledby="eval-title">
+  <div class="sec-head">
+    <h2 id="eval-title" class="head">Measured, one stage at a time</h2>
+    <p>The evaluation harness asks 50 questions with known answer pages over four sample PDFs: factual, exact-term, paraphrased, follow-up, and 7 the documents can't answer. It runs the real pipeline once per configuration, adding one stage each time.</p>
+  </div>
+  <div class="eval-panel panel">
+    <div class="eval-top">
+      <div class="seg" role="group" aria-label="Metric">
+        <button type="button" aria-pressed="true" data-m="h1">Hit@1</button>
+        <button type="button" aria-pressed="false" data-m="h3">Hit@3</button>
+        <button type="button" aria-pressed="false" data-m="mrr">MRR</button>
+      </div>
+      <p class="eval-read" id="eval-read"></p>
+    </div>
+    <ol class="ladder" id="ladder" role="list"></ol>
+  </div>
+  <ul class="nums nums-dark" role="list">
+    <li><b>96<span>%</span></b><p>of citations point to a correct page</p></li>
+    <li><b>95<span>%</span></b><p>of claims are supported by the cited excerpts</p></li>
+    <li><b>96<span>%</span></b><p>of expected key facts are stated</p></li>
+    <li><b>7<span>/7</span></b><p>unanswerable questions handled: 2 refused by the gate, 5 declined by the model</p></li>
+  </ul>
+  <p class="demo-note">Answers graded by a second model, <code>openai/gpt-oss-20b</code>. The reranker is the biggest single win; the gate never refused an answerable question.</p>
+</section>
+
+<!-- Study tools -->
+<section class="study wrap" id="study" aria-labelledby="study-title">
+  <h2 id="study-title" class="head study-h">More than chat</h2>
+  <div class="board">
+    <article class="tile wide" data-c="field">
+      <p class="tile-k">Sources</p>
+      <h3>PDF, Word, PowerPoint, Markdown, text</h3>
+      <p>Up to 50 MB each, indexed in the background with live progress: “OCR on page 3 of 40”. Scanned pages are read with RapidOCR, offline. Slides are cited as “slide N”, speaker notes included.</p>
+    </article>
+    <article class="tile" data-c="accent">
+      <p class="tile-k">Quizzes</p>
+      <h3>5, 10 or 15 questions</h3>
+      <p>Easy, medium or hard, every question cited. <b>Review mistakes</b> replays only the ones you got wrong.</p>
+    </article>
+    <article class="tile" data-c="surface">
+      <p class="tile-k">Flashcards</p>
+      <h3>Decks of 10, 20 or 30</h3>
+      <p>Mark <em>Got it</em> or <em>Still learning</em>, review the misses, export to Anki or CSV.</p>
+    </article>
+    <article class="tile" data-c="raised">
+      <p class="tile-k">Studio</p>
+      <h3>Study guide, FAQ, timeline, glossary</h3>
+      <p>One click each, every item with a citation chip. A timeline is refused when the sources have no dated events.</p>
+    </article>
+    <article class="tile" data-c="surface">
+      <p class="tile-k">Tables</p>
+      <h3>Kept whole</h3>
+      <p>Tables become Markdown and are chunked on their own, the header repeated, so answers can read rows and columns.</p>
+    </article>
+    <article class="tile wide" data-c="deep">
+      <p class="tile-k">Trace</p>
+      <h3>“How was this answered?”</h3>
+      <p>The rewritten query, every candidate passage with vector, keyword, fused and rerank scores, which ones the model saw, per-stage timings and token counts.</p>
+    </article>
+  </div>
+</section>
+
+<!-- Hostile sources -->
+<section class="hostile wrap" aria-labelledby="hostile-title">
+  <div class="sec-head">
+    <h2 id="hostile-title" class="head">Every upload is untrusted</h2>
+    <p>Folio never builds storage paths from filenames, checks ownership on every route, and keeps suspicious chunks out of both retrieval and the model's context. The scanner records the rule it matched instead of silently dropping a source.</p>
+  </div>
+  <ul class="rules" role="list">
+    <li><h3>Deep-parsed PDFs</h3><p>Encrypted files, scripts and launch actions, embedded files and excessive page counts are rejected before storage.</p></li>
+    <li><h3>Office files checked</h3><p>Must be valid archives with no macros and a capped uncompressed size.</p></li>
+    <li><h3>Prompt injection quarantined</h3><p>Likely injection passages are kept out of the context. Source blocks are delimited and the model is told never to follow them.</p></li>
+    <li><h3>Invisible Unicode</h3><p>Normalised before chunking, so hidden characters can't smuggle instructions.</p></li>
+    <li><h3>PII masking</h3><p>Optional per notebook: Aadhaar, PAN, email and Indian phone numbers are masked in what search and the LLM see.</p></li>
+    <li><h3>Accounts</h3><p>Hashed passwords, httpOnly same-origin session cookies, 10 failed logins per 15 minutes before a 429.</p></li>
+  </ul>
+</section>
+
+<!-- Run -->
+<section class="cta wrap" id="run" aria-labelledby="cta-title">
+  <div class="cta-copy">
+    <h2 id="cta-title" class="display">Bring your own PDFs<span class="dot">.</span></h2>
+    <p>You need Docker Desktop and a free Groq API key. The first build takes several minutes: it downloads CPU-only PyTorch and the embedding model. After that, Folio needs the internet only to call Groq.</p>
+    <p><a class="link" href="https://github.com/swayam5342/Folio#configuration">Every setting in the README</a></p>
+  </div>
+  <div class="cmds">
+    <div class="cmd">
+      <p class="cmd-k">1 · Configure</p>
+      <pre><code>cp .env.example .env
+# set GROQ_API_KEY and JWT_SECRET in .env</code></pre>
+      <button class="copy" type="button">Copy</button>
+    </div>
+    <div class="cmd">
+      <p class="cmd-k">A long random JWT_SECRET</p>
+      <pre><code>python -c "import secrets; print(secrets.token_urlsafe(48))"</code></pre>
+      <button class="copy" type="button">Copy</button>
+    </div>
+    <div class="cmd">
+      <p class="cmd-k">2 · Start, then open http://localhost:8080</p>
+      <pre><code>docker compose up --build</code></pre>
+      <button class="copy" type="button">Copy</button>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p class="mark" aria-hidden="true">Folio<span class="dot">.</span></p>
+    <div class="foot-grid">
+      <div><h3>Code</h3><ul role="list">
+        <li><a class="link" href="https://github.com/swayam5342/Folio">Repository</a></li>
+        <li><a class="link" href="https://github.com/swayam5342/Folio/issues">Issues</a></li>
+        <li><a class="link" href="https://github.com/swayam5342/Folio/blob/main/docs/eval/results.md">Evaluation report</a></li>
+        <li><a class="link" href="https://github.com/swayam5342/Folio/tree/main/docs/samples">Sample PDFs</a></li>
+      </ul></div>
+      <div><h3>Built with</h3><ul role="list">
+        <li>FastAPI, SQLAlchemy, Alembic</li>
+        <li>Postgres + pgvector</li>
+        <li>React, Vite, TanStack Query, react-pdf</li>
+        <li>Groq, sentence-transformers</li>
+      </ul></div>
+      <div><h3>In the app</h3><ul role="list">
+        <li><code>/evaluation</code>: the latest results</li>
+        <li><code>/design</code>: the living style guide</li>
+        <li><code>:8000/docs</code>: API docs, in development</li>
+      </ul></div>
+    </div>
+    <div class="foot-last">
+      <p>Folio, built by <a class="link" href="https://github.com/swayam5342">swayam5342</a> · more at <a class="link" href="https://swayam.li">swayam.li</a></p>
+      <a class="btn btn-small" href="#top">Back to top</a>
+    </div>
+  </div>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
